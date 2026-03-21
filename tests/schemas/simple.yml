@@ -1,0 +1,128 @@
+saladVersion: v1.1
+$base: "https://example.org/test#"
+
+$namespaces:
+  test: "https://example.org/test#"
+  pydantic: "https://example.org/pydantic#"
+
+$graph:
+
+- name: BaseRecord
+  type: record
+  abstract: true
+  doc: |
+    A base record with common fields.
+  fields:
+    - name: id
+      type: string?
+      jsonldPredicate: "@id"
+      doc: Unique identifier.
+    - name: name
+      type: string?
+      jsonldPredicate: "@id"
+      doc: Display name.
+
+- name: StatusEnum
+  type: enum
+  symbols:
+    - active
+    - inactive
+    - pending
+  doc: Status values for items.
+
+- name: ItemKindSingle
+  type: enum
+  symbols:
+    - widget
+  doc: Single-value discriminator for widgets.
+
+- name: ChildRecord
+  type: record
+  extends: BaseRecord
+  documentRoot: true
+  doc: |
+    A concrete child record extending BaseRecord.
+  fields:
+    - name: status
+      type: StatusEnum?
+      doc: Current status.
+    - name: format-version
+      type: string?
+      jsonldPredicate:
+        _id: "test:format_version"
+      pydantic:alias: "format-version"
+      doc: Version string with hyphenated JSON key.
+    - name: items
+      type: Any?
+      jsonldPredicate:
+        _id: "test:ChildRecord/items"
+        noLinkCheck: true
+      pydantic:type: "dict[str, str]"
+      doc: A dict of string items.
+    - name: tags
+      type:
+        - "null"
+        - type: array
+          items: string
+      doc: List of tags.
+
+- name: PersonType
+  type: enum
+  symbols:
+    - Person
+  doc: Discriminator for Person.
+
+- name: OrgType
+  type: enum
+  symbols:
+    - Organization
+  doc: Discriminator for Organization.
+
+- name: BaseMember
+  type: record
+  abstract: true
+  doc: Base member fields.
+  fields:
+    - name: name
+      type: string?
+      jsonldPredicate: "@id"
+      doc: Member name.
+
+- name: PersonMember
+  type: record
+  extends: BaseMember
+  doc: A person member.
+  fields:
+    - name: class
+      type: PersonType
+      jsonldPredicate:
+        "_id": "@type"
+        "_type": "@vocab"
+      doc: Type discriminator.
+    - name: email
+      type: string?
+      doc: Email address.
+
+- name: OrgMember
+  type: record
+  extends: BaseMember
+  doc: An organization member.
+  fields:
+    - name: class
+      type: OrgType
+      jsonldPredicate:
+        "_id": "@type"
+        "_type": "@vocab"
+      doc: Type discriminator.
+    - name: url
+      type: string?
+      jsonldPredicate:
+        _id: "test:url"
+      doc: Website URL.
+
+- name: Member
+  type: union
+  names:
+    - PersonMember
+    - OrgMember
+  doc: A member, either person or org.

@@ -1,0 +1,34 @@
+*.py[cod]
+__pycache__/
+
+# C extensions
+*.so
+
+# Packages
+.eggs/
+*.egg
+*.egg-info/
+dist/
+build/
+sdist/
+
+# Installer logs
+pip-log.txt
+
+# Unit test / coverage reports
+.coverage
+.tox/
+htmlcov/
+.pytest_cache/
+
+# Type checking / linting
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp

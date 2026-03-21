@@ -1,0 +1,33 @@
+name: Python CI
+on: [push, pull_request]
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        persist-credentials: false
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: pip
+    - name: Install uv
+      uses: astral-sh/setup-uv@v6
+    - name: Sync dependencies
+      run: uv sync --group test --group lint --group mypy
+    - name: Lint (ruff)
+      run: uv run --group lint ruff check src/ tests/
+    - name: Lint (black)
+      run: uv run --group lint black --check --diff src/ tests/
+    - name: Type check (mypy)
+      if: matrix.python-version == '3.13'
+      run: uv run --group mypy mypy src/schema_salad_plus_pydantic
+    - name: Test
+      run: uv run --group test pytest tests/ -x -q
