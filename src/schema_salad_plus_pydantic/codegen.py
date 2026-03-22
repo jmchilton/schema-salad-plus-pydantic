@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import re
 from collections import OrderedDict
 from collections.abc import MutableSequence
@@ -293,6 +294,52 @@ from pydantic import BaseModel, ConfigDict, Field, Discriminator, Tag
         self._field_pydantic_discriminator_field = None
         self._field_pydantic_discriminator_map = None
 
+    @staticmethod
+    def _build_discriminated_type(type_ann: str, tag_map: dict[str, str], disc_func: str) -> str:
+        """Build a pydantic Discriminator-annotated type from a type annotation.
+
+        The Discriminator must wrap only the union of model types, not nullable/list
+        wrappers. Each union member gets a Tag annotation.
+
+        Examples::
+
+          list[A | B] | None -> list[Annotated[..., Discriminator(f)]] | None
+          A | B | None       -> Annotated[..., Discriminator(f)] | None
+          A | B              -> Annotated[..., Discriminator(f)]
+        """
+
+        def tag_type(t: str) -> str:
+            t = t.strip()
+            if t in tag_map:
+                return f'Annotated[{t}, Tag("{tag_map[t]}")]'
+            return t
+
+        def tag_union(union_str: str) -> str:
+            parts = [p.strip() for p in union_str.split("|")]
+            return " | ".join(tag_type(p) for p in parts)
+
+        # Check for nullable suffix
+        nullable = False
+        core = type_ann
+        if type_ann.endswith("| None"):
+            nullable = True
+            core = type_ann[: -len("| None")].rstrip()
+
+        # Check for list wrapper
+        list_match = re.match(r"^list\[(.+)\]$", core)
+        if list_match:
+            inner_union = list_match.group(1)
+            tagged_inner = tag_union(inner_union)
+            result = f"list[Annotated[{tagged_inner}, Discriminator({disc_func})]]"
+        else:
+            tagged = tag_union(core)
+            result = f"Annotated[{tagged}, Discriminator({disc_func})]"
+
+        if nullable:
+            result = f"{result} | None"
+
+        return result
+
     def declare_field(
         self,
         name: str,
@@ -349,10 +396,20 @@ from pydantic import BaseModel, ConfigDict, Field, Discriminator, Tag
         if self._field_pydantic_discriminator_field and self._field_pydantic_discriminator_map:
             disc_field = self._field_pydantic_discriminator_field
             disc_map_str = self._field_pydantic_discriminator_map
-            # Generate the discriminator function name
             disc_func = f"_discriminate_{py_name}"
+            disc_map = ast.literal_eval(disc_map_str)
+            reverse_map = {v: v for v in disc_map.values()}
+            # Build the discriminated type annotation. The Discriminator must wrap
+            # only the union, not nullable/list wrappers. Pattern:
+            #   list[A | B] | None -> list[Annotated[A | B, Discriminator(f)]] | None
+            #   A | B | None       -> Annotated[A | B, Discriminator(f)] | None
+            #   list[A | B]        -> list[Annotated[A | B, Discriminator(f)]]
+            tagged_ann = self._build_discriminated_type(type_ann, reverse_map, disc_func)
             self._class_code.write(f"    # Discriminated union on '{disc_field}'\n")
-            type_ann_line = f"    {py_name}: Annotated[{type_ann}, Discriminator({disc_func})]"
+            if default is not None:
+                type_ann_line = f"    {py_name}: {tagged_ann} = {default}"
+            else:
+                type_ann_line = f"    {py_name}: {tagged_ann}"
         else:
             disc_func = None
             disc_field = None
