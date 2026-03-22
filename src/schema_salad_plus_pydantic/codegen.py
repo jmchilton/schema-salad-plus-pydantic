@@ -472,11 +472,11 @@ from pydantic import BaseModel, ConfigDict, Field, Discriminator, Tag
         if hasattr(self, "_deferred_discriminators"):
             for disc_func, disc_field, disc_map_str, classname in self._deferred_discriminators:
                 self.out.write(f"\ndef {disc_func}(v: Any) -> str:\n")
-                self.out.write(f"    disc_map = {disc_map_str}\n")
+                self.out.write(f"    disc_map: dict[str, str] = {disc_map_str}\n")
                 self.out.write("    if isinstance(v, dict):\n")
-                self.out.write(f'        disc_val = v.get("{disc_field}")\n')
+                self.out.write(f'        disc_val: str = str(v.get("{disc_field}", ""))\n')
                 self.out.write("    else:\n")
-                self.out.write(f'        disc_val = getattr(v, "{disc_field}", None)\n')
+                self.out.write(f'        disc_val = str(getattr(v, "{disc_field}", ""))\n')
                 self.out.write("    return disc_map.get(disc_val, disc_val)\n\n")
 
         # Emit classes
@@ -489,9 +489,17 @@ from pydantic import BaseModel, ConfigDict, Field, Discriminator, Tag
 
         # Emit load_document convenience function
         root_type = root_loader.instance_type or root_loader.name
+
+        # Extract the single-document types (not list[...]) for _load_single
+        if " | " in root_type:
+            single_parts = [p.strip() for p in root_type.split("|") if p.strip() != "None" and "list[" not in p]
+        else:
+            single_parts = [root_type]
+        single_type = " | ".join(single_parts) if single_parts else root_type
+
         self.out.write(f"""
 
-def load_document(path: str | Path) -> {root_type}:
+def load_document(path: str | Path) -> {single_type} | list[{single_type}]:
     \"\"\"Load and validate a document from a JSON file.\"\"\"
     with open(path) as f:
         data = json.load(f)
@@ -500,18 +508,13 @@ def load_document(path: str | Path) -> {root_type}:
     return _load_single(data)
 
 
-def _load_single(data: dict[str, Any]) -> {root_type}:
+def _load_single(data: dict[str, Any]) -> {single_type}:
     \"\"\"Load a single document dict.\"\"\"
 """)
-        # If root_type is a union, need to try each
-        if " | " in root_type:
-            parts = [p.strip() for p in root_type.split("|") if p.strip() != "None" and "list[" not in p]
-            if parts:
-                self.out.write(f"    return {parts[0]}.model_validate(data)\n")
-            else:
-                self.out.write("    raise ValueError('Cannot load document')\n")
+        if single_parts:
+            self.out.write(f"    return {single_parts[0]}.model_validate(data)\n")
         else:
-            self.out.write(f"    return {root_type}.model_validate(data)\n")
+            self.out.write("    raise ValueError('Cannot load document')\n")
 
     def mark_field_inherited(self, field_shortname: str, inherited_from: str) -> None:
         """Mark a field as inherited from a parent class."""
