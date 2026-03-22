@@ -29,11 +29,11 @@ def simple_schema_path() -> Path:
 def generate_code_from_schema():
     """Factory fixture: generate pydantic code from a schema path, return the code string."""
 
-    def _generate(schema_path: str | Path) -> str:
+    def _generate(schema_path: str | Path, *, strict: bool = False) -> str:
         from schema_salad_plus_pydantic.orchestrate import generate_from_schema
 
         buf = StringIO()
-        generate_from_schema(str(schema_path), buf)
+        generate_from_schema(str(schema_path), buf, strict=strict)
         return buf.getvalue()
 
     return _generate

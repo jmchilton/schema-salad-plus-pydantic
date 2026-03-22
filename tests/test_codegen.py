@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import importlib.util
 import re
+import sys
+
+import pytest
+from pydantic import ValidationError
 
 
 def test_generates_valid_python(generate_code_from_schema, simple_schema_path):
@@ -99,6 +104,33 @@ def test_model_config(generate_code_from_schema, simple_schema_path):
     code = generate_code_from_schema(simple_schema_path)
     assert "populate_by_name=True" in code
     assert 'extra="allow"' in code
+
+
+def test_model_config_strict(generate_code_from_schema, simple_schema_path):
+    """With strict=True, classes should use extra=forbid."""
+    code = generate_code_from_schema(simple_schema_path, strict=True)
+    assert "populate_by_name=True" in code
+    assert 'extra="forbid"' in code
+    assert 'extra="allow"' not in code
+
+
+def test_strict_rejects_unknown_fields(generate_code_from_schema, simple_schema_path):
+    """Strict models should raise ValidationError on unknown keys."""
+    code = generate_code_from_schema(simple_schema_path, strict=True)
+    spec = importlib.util.spec_from_loader("strict_models", loader=None)
+    mod = importlib.util.module_from_spec(spec)
+    exec(compile(code, "<strict_models>", "exec"), mod.__dict__)
+    sys.modules["strict_models"] = mod
+
+    data = {
+        "name": "x",
+        "status": "active",
+        "format-version": "1.0",
+        "items": {},
+        "not_in_schema": True,
+    }
+    with pytest.raises(ValidationError):
+        mod.ChildRecord.model_validate(data)
 
 
 def test_optional_fields(generate_code_from_schema, simple_schema_path):

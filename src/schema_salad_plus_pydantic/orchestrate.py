@@ -34,11 +34,12 @@ def generate(
     out: IO[str],
     copyright: str | None = None,
     parser_info: str = "",
+    strict: bool = False,
 ) -> None:
     """Generate pydantic models from pre-loaded schema items."""
     j = schema.extend_and_specialize(schema_items, loader)
 
-    gen = PydanticCodeGen(out, copyright=copyright, parser_info=parser_info)
+    gen = PydanticCodeGen(out, copyright=copyright, parser_info=parser_info, strict=strict)
     gen.prologue()
 
     document_roots: list[str] = []
@@ -190,6 +191,7 @@ def generate_from_schema(
     out: IO[str],
     copyright: str | None = None,
     parser_info: str = "",
+    strict: bool = False,
 ) -> None:
     """Load a schema-salad schema file and generate pydantic models.
 
@@ -224,4 +226,5 @@ def generate_from_schema(
         out,
         copyright=copyright,
         parser_info=parser_info,
+        strict=strict,
     )

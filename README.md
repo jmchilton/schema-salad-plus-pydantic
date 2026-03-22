@@ -45,6 +45,8 @@ Generate pydantic models from a schema-salad YAML file:
 schema-salad-plus-pydantic generate schema.yml -o models.py
 ```
 
+Pass `--strict` to emit models with `extra="forbid"` (reject unknown JSON keys); the default is permissive `extra="allow"`.
+
 Or write to stdout:
 
 ```bash
@@ -64,6 +66,10 @@ code = buf.getvalue()
 # Or write directly to a file
 with open("models.py", "w") as f:
     generate_from_schema("path/to/schema.yml", f)
+
+# Optional: strict=True emits models with extra="forbid" (unknown keys rejected)
+with open("models_strict.py", "w") as f:
+    generate_from_schema("path/to/schema.yml", f, strict=True)
 ```
 
 ### Using the generated models

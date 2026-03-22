@@ -53,6 +53,7 @@ class PydanticCodeGen:
         copyright: str | None = None,
         parser_info: str = "",
         salad_version: str = "v1.1",
+        strict: bool = False,
     ) -> None:
         # CodeGenBase state (reimplemented to avoid Cython inheritance issue)
         self.collected_types: OrderedDict[str, TypeDef] = OrderedDict()
@@ -63,6 +64,7 @@ class PydanticCodeGen:
         self.copyright = copyright
         self.parser_info = parser_info
         self.salad_version = salad_version
+        self._extra: Final[str] = "forbid" if strict else "allow"
 
         # State tracking
         self._current_class: str = ""
@@ -156,7 +158,9 @@ from pydantic import BaseModel, ConfigDict, Field, Discriminator, Tag
             doc_clean = doc.strip().replace('"""', "'''")
             self._class_code.write(f'    """{doc_clean}"""\n\n')
 
-        self._class_code.write('    model_config = ConfigDict(populate_by_name=True, extra="allow")\n\n')
+        self._class_code.write(
+            f'    model_config = ConfigDict(populate_by_name=True, extra="{self._extra}")\n\n'
+        )
 
     def end_class(self, classname: str, field_names: list[str]) -> None:
         self._current_class = ""
