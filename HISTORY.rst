@@ -6,7 +6,7 @@ History
 .. to_doc
 
 ---------------------
-0.1.0.dev0
+0.1.0 (2026-03-21)
 ---------------------
 
 * Initial implementation of pydantic v2 code generation from schema-salad definitions.
