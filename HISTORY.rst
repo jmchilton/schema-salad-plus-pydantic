@@ -6,7 +6,7 @@ History
 .. to_doc
 
 ---------------------
-0.1.3.dev0
+0.1.3 (2026-03-22)
 ---------------------
 
 * Fix mypy errors in generated code: type discriminator function variables
