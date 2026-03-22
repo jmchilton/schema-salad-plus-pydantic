@@ -158,9 +158,7 @@ from pydantic import BaseModel, ConfigDict, Field, Discriminator, Tag
             doc_clean = doc.strip().replace('"""', "'''")
             self._class_code.write(f'    """{doc_clean}"""\n\n')
 
-        self._class_code.write(
-            f'    model_config = ConfigDict(populate_by_name=True, extra="{self._extra}")\n\n'
-        )
+        self._class_code.write(f'    model_config = ConfigDict(populate_by_name=True, extra="{self._extra}")\n\n')
 
     def end_class(self, classname: str, field_names: list[str]) -> None:
         self._current_class = ""
@@ -173,31 +171,33 @@ from pydantic import BaseModel, ConfigDict, Field, Discriminator, Tag
         container: str | None = None,
         no_link_check: bool | None = None,
     ) -> TypeDef:
-        match type_declaration:
-            case MutableSequence():
-                # Union type
-                parts = []
-                for item in type_declaration:
-                    td = self.type_loader(item)
-                    parts.append(td.instance_type or td.name)
-                # Deduplicate while preserving order
-                seen: set[str] = set()
-                unique_parts: list[str] = []
-                for p in parts:
-                    if p not in seen:
-                        seen.add(p)
-                        unique_parts.append(p)
-                union_str = " | ".join(unique_parts)
-                name = "union_of_" + "_or_".join(unique_parts)
-                return self.declare_type(TypeDef(name=name, init=union_str, instance_type=union_str))
+        td = type_declaration
 
-            case {"type": "array" | "https://w3id.org/cwl/salad#array", "items": items}:
+        if isinstance(td, MutableSequence):
+            # Union type (schema list of alternatives)
+            parts = []
+            for item in td:
+                sub = self.type_loader(item)
+                parts.append(sub.instance_type or sub.name)
+            seen: set[str] = set()
+            unique_parts: list[str] = []
+            for p in parts:
+                if p not in seen:
+                    seen.add(p)
+                    unique_parts.append(p)
+            union_str = " | ".join(unique_parts)
+            name = "union_of_" + "_or_".join(unique_parts)
+            return self.declare_type(TypeDef(name=name, init=union_str, instance_type=union_str))
+
+        if isinstance(td, dict):
+            t = td.get("type")
+            if t in ("array", "https://w3id.org/cwl/salad#array") and "items" in td:
+                items = td["items"]
                 if isinstance(items, list):
-                    # Array of union
                     inner_parts = []
                     for it in items:
-                        td = self.type_loader(it)
-                        inner_parts.append(td.instance_type or td.name)
+                        inner_td = self.type_loader(it)
+                        inner_parts.append(inner_td.instance_type or inner_td.name)
                     inner_str = " | ".join(inner_parts)
                     type_str = f"list[{inner_str}]"
                 else:
@@ -205,42 +205,38 @@ from pydantic import BaseModel, ConfigDict, Field, Discriminator, Tag
                     type_str = f"list[{inner.instance_type or inner.name}]"
                 return self.declare_type(TypeDef(name=f"array_{type_str}", init=type_str, instance_type=type_str))
 
-            case {
-                "type": "enum" | "https://w3id.org/cwl/salad#enum",
-                "symbols": symbols,
-                "name": name,
-                **rest,
-            }:
+            if t in ("enum", "https://w3id.org/cwl/salad#enum") and "symbols" in td and "name" in td:
+                symbols = td["symbols"]
+                name = td["name"]
+                rest = {k: v for k, v in td.items() if k not in ("type", "symbols", "name")}
                 safe = self.safe_name(name)
                 for sym in symbols:
                     self.add_vocab(shortname(sym), sym)
 
                 if len(symbols) == 1:
-                    # Single-symbol enum -> Literal
                     sym_val = shortname(symbols[0])
                     type_str = f'Literal["{sym_val}"]'
                     return self.declare_type(TypeDef(name=f"{safe}Loader", init=type_str, instance_type=type_str))
-                else:
-                    # Multi-symbol -> Enum class
-                    if safe not in self._enums_emitted:
-                        self._enums_emitted.add(safe)
-                        self._enum_code.write(f"\nclass {safe}(str, Enum):\n")
-                        doc = rest.get("doc", "")
-                        if doc:
-                            if isinstance(doc, list):
-                                doc = "\n".join(doc)
-                            doc_clean = str(doc).strip().replace('"""', "'''")
-                            self._enum_code.write(f'    """{doc_clean}"""\n\n')
-                        for sym in symbols:
-                            sym_short = shortname(sym)
-                            # Make valid Python identifier
-                            py_name = sym_short.replace("-", "_").replace(".", "_")
-                            self._enum_code.write(f'    {py_name} = "{sym_short}"\n')
-                        self._enum_code.write("\n")
+                if safe not in self._enums_emitted:
+                    self._enums_emitted.add(safe)
+                    self._enum_code.write(f"\nclass {safe}(str, Enum):\n")
+                    doc = rest.get("doc", "")
+                    if doc:
+                        if isinstance(doc, list):
+                            doc = "\n".join(doc)
+                        doc_clean = str(doc).strip().replace('"""', "'''")
+                        self._enum_code.write(f'    """{doc_clean}"""\n\n')
+                    for sym in symbols:
+                        sym_short = shortname(sym)
+                        py_name = sym_short.replace("-", "_").replace(".", "_")
+                        self._enum_code.write(f'    {py_name} = "{sym_short}"\n')
+                    self._enum_code.write("\n")
 
-                    return self.declare_type(TypeDef(name=f"{safe}Loader", init=safe, instance_type=safe))
+                return self.declare_type(TypeDef(name=f"{safe}Loader", init=safe, instance_type=safe))
 
-            case {"type": "record" | "https://w3id.org/cwl/salad#record", "name": name, **rest}:
+            if t in ("record", "https://w3id.org/cwl/salad#record") and "name" in td:
+                name = td["name"]
+                rest = {k: v for k, v in td.items() if k not in ("type", "name")}
                 safe = self.safe_name(name)
                 return self.declare_type(
                     TypeDef(
@@ -251,33 +247,32 @@ from pydantic import BaseModel, ConfigDict, Field, Discriminator, Tag
                     )
                 )
 
-            case {
-                "type": "union" | "https://w3id.org/cwl/salad#union",
-                "name": name,
-                "names": list(names),
-            }:
+            if (
+                t in ("union", "https://w3id.org/cwl/salad#union")
+                and "name" in td
+                and isinstance(td.get("names"), list)
+            ):
+                name = td["name"]
+                names = td["names"]
                 safe = self.safe_name(name)
                 loader_name = f"{safe}Loader"
                 parts = []
                 for n in names:
-                    td = self.type_loader(n)
-                    parts.append(td.instance_type or td.name)
+                    inner_td = self.type_loader(n)
+                    parts.append(inner_td.instance_type or inner_td.name)
                 union_str = " | ".join(parts)
                 return self.declare_type(TypeDef(name=loader_name, init=union_str, instance_type=union_str))
 
-            case str(decl) if decl in _PRIM_TYPEDEFS:
-                return _PRIM_TYPEDEFS[decl]
+        if isinstance(td, str):
+            if td in _PRIM_TYPEDEFS:
+                return _PRIM_TYPEDEFS[td]
+            safe = self.safe_name(td)
+            loader_key = f"{safe}Loader"
+            if loader_key in self.collected_types:
+                return self.collected_types[loader_key]
+            return self.declare_type(TypeDef(name=loader_key, init=safe, instance_type=safe))
 
-            case str(decl):
-                safe = self.safe_name(decl)
-                loader_key = f"{safe}Loader"
-                if loader_key in self.collected_types:
-                    return self.collected_types[loader_key]
-                # Forward reference — return a TypeDef pointing to the class name
-                return self.declare_type(TypeDef(name=loader_key, init=safe, instance_type=safe))
-
-            case _:
-                raise ValueError(f"Unhandled type declaration: {type_declaration}")
+        raise ValueError(f"Unhandled type declaration: {type_declaration}")
 
     def set_field_annotations(
         self,
