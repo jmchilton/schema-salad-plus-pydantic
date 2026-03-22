@@ -6,7 +6,7 @@ History
 .. to_doc
 
 ---------------------
-0.1.2.dev0
+0.1.2 (2026-03-22)
 ---------------------
 
 * Add ``--strict`` flag to emit models with ``extra="forbid"`` (reject unknown fields).
