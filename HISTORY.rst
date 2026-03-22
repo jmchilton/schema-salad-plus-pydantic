@@ -9,6 +9,12 @@ History
 0.1.2.dev0
 ---------------------
 
+* Add ``--strict`` flag to emit models with ``extra="forbid"`` (reject unknown fields).
+* Add ``enhance-docs`` command to post-process schema-salad-doc HTML with pydantic types.
+* Add ``pydantic:discriminator_field`` / ``pydantic:discriminator_map`` support for
+  discriminated unions with ``Annotated[..., Tag(...), Discriminator(...)]``.
+* Lower minimum Python to 3.9; refactor ``match`` statements to ``if/elif``.
+* Add ``pyyaml`` as explicit dependency for ``enhance-docs``.
 
 ---------------------
 0.1.1 (2026-03-21)
