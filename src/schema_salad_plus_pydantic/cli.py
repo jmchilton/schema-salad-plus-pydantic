@@ -21,6 +21,11 @@ def main(argv: list[str] | None = None) -> None:
     gen_parser.add_argument("-o", "--output", help="Output file (default: stdout)")
     gen_parser.add_argument("--copyright", help="Copyright notice")
     gen_parser.add_argument("--parser-info", default="", help="Parser info string")
+    gen_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Emit models with extra='forbid' (reject unknown fields); default is extra='allow'",
+    )
 
     doc_parser = subparsers.add_parser("enhance-docs", help="Enhance schema-salad-doc HTML with pydantic types")
     doc_parser.add_argument("schema", help="Schema-salad YAML file with pydantic annotations")
@@ -32,9 +37,21 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "generate":
         if args.output:
             with open(args.output, "w") as f:
-                generate_from_schema(args.schema, f, copyright=args.copyright, parser_info=args.parser_info)
+                generate_from_schema(
+                    args.schema,
+                    f,
+                    copyright=args.copyright,
+                    parser_info=args.parser_info,
+                    strict=args.strict,
+                )
         else:
-            generate_from_schema(args.schema, sys.stdout, copyright=args.copyright, parser_info=args.parser_info)
+            generate_from_schema(
+                args.schema,
+                sys.stdout,
+                copyright=args.copyright,
+                parser_info=args.parser_info,
+                strict=args.strict,
+            )
     elif args.command == "enhance-docs":
         enhance_docs(args.schema, args.html, args.output)
     else:
