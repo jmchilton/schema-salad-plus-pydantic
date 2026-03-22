@@ -9,6 +9,8 @@ History
 0.1.3.dev0
 ---------------------
 
+* Fix mypy errors in generated code: type discriminator function variables
+  as ``str``, fix ``load_document`` return type for list comprehension.
 
 ---------------------
 0.1.2 (2026-03-22)
