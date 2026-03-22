@@ -16,7 +16,9 @@ jobs:
           python3 -m pip install --upgrade pip setuptools
           python3 -m pip install --upgrade build twine
       - name: Create and check packages
-        run: make dist
+        run: |
+          python3 -m build
+          twine check dist/*
       - uses: actions/upload-artifact@v7
         with:
           name: packages
