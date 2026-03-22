@@ -17,6 +17,7 @@ keywords = ["schema-salad", "pydantic", "code-generation", "galaxy", "cwl"]
 dependencies = [
     "schema-salad[pycodegen]",
     "pydantic>=2.0",
+    "pyyaml",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
