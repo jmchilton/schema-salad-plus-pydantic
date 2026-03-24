@@ -6,7 +6,7 @@ History
 .. to_doc
 
 ---------------------
-0.1.4.dev0
+0.1.4 (2026-03-24)
 ---------------------
 
 * Fix nullable discriminated unions (``None | list[A | B]``) failing
