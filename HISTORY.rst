@@ -9,6 +9,11 @@ History
 0.1.4.dev0
 ---------------------
 
+* Fix nullable discriminated unions (``None | list[A | B]``) failing
+  ``model_rebuild()`` in strict mode. Discriminator now correctly wraps
+  only the inner union regardless of where ``None`` appears.
+* Add tests for discriminator ``getattr`` with Python-safe attr names
+  (``class_`` vs ``class``) and discriminated union model instance roundtrips.
 
 ---------------------
 0.1.3 (2026-03-22)
