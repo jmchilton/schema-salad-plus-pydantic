@@ -302,9 +302,10 @@ from pydantic import BaseModel, ConfigDict, Field, Discriminator, Tag
 
         Examples::
 
-          list[A | B] | None -> list[Annotated[..., Discriminator(f)]] | None
-          A | B | None       -> Annotated[..., Discriminator(f)] | None
-          A | B              -> Annotated[..., Discriminator(f)]
+          None | list[A | B]  -> list[Annotated[..., Discriminator(f)]] | None
+          list[A | B] | None  -> list[Annotated[..., Discriminator(f)]] | None
+          A | B | None        -> Annotated[..., Discriminator(f)] | None
+          A | B               -> Annotated[..., Discriminator(f)]
         """
 
         def tag_type(t: str) -> str:
@@ -317,12 +318,11 @@ from pydantic import BaseModel, ConfigDict, Field, Discriminator, Tag
             parts = [p.strip() for p in union_str.split("|")]
             return " | ".join(tag_type(p) for p in parts)
 
-        # Check for nullable suffix
-        nullable = False
-        core = type_ann
-        if type_ann.endswith("| None"):
-            nullable = True
-            core = type_ann[: -len("| None")].rstrip()
+        # Strip None from the union (may appear at beginning or end)
+        parts = [p.strip() for p in type_ann.split("|")]
+        non_none = [p for p in parts if p != "None"]
+        nullable = len(non_none) < len(parts)
+        core = " | ".join(non_none)
 
         # Check for list wrapper
         list_match = re.match(r"^list\[(.+)\]$", core)
@@ -471,12 +471,14 @@ from pydantic import BaseModel, ConfigDict, Field, Discriminator, Tag
         # Emit discriminator functions before classes (they need to be defined before use)
         if hasattr(self, "_deferred_discriminators"):
             for disc_func, disc_field, disc_map_str, classname in self._deferred_discriminators:
+                # For getattr on model instances, use Python-safe name (e.g. "class" -> "class_")
+                py_disc_field = self._python_name(disc_field)
                 self.out.write(f"\ndef {disc_func}(v: Any) -> str:\n")
                 self.out.write(f"    disc_map: dict[str, str] = {disc_map_str}\n")
                 self.out.write("    if isinstance(v, dict):\n")
                 self.out.write(f'        disc_val: str = str(v.get("{disc_field}", ""))\n')
                 self.out.write("    else:\n")
-                self.out.write(f'        disc_val = str(getattr(v, "{disc_field}", ""))\n')
+                self.out.write(f'        disc_val = str(getattr(v, "{py_disc_field}", ""))\n')
                 self.out.write("    return disc_map.get(disc_val, disc_val)\n\n")
 
         # Emit classes

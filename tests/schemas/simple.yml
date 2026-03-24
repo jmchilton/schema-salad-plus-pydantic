@@ -65,6 +65,19 @@ $graph:
         - type: array
           items: string
       doc: List of tags.
+    - name: members
+      type:
+        - "null"
+        - type: array
+          items:
+            - PersonMember
+            - OrgMember
+      jsonldPredicate:
+        _id: "test:ChildRecord/members"
+        noLinkCheck: true
+      pydantic:discriminator_field: "class"
+      pydantic:discriminator_map: '{"Person": "PersonMember", "Organization": "OrgMember"}'
+      doc: List of members with discriminated union on class field.
 
 - name: PersonType
   type: enum

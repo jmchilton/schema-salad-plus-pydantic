@@ -151,3 +151,42 @@ def test_parser_info(generate_code_from_schema, simple_schema_path):
     """Should generate parser_info function."""
     code = generate_code_from_schema(simple_schema_path)
     assert "def parser_info()" in code
+
+
+def test_discriminator_uses_python_safe_attr(generate_code_from_schema, simple_schema_path):
+    """Discriminator functions should use Python-safe attr names (class_ not class) for getattr."""
+    code = generate_code_from_schema(simple_schema_path)
+    # The discriminator for 'class' field should use 'class_' for model instance access
+    assert 'getattr(v, "class_"' in code
+    # But dict access should still use the JSON key 'class'
+    assert 'v.get("class"' in code
+
+
+def test_discriminated_union_with_model_instances(generate_code_from_schema, simple_schema_path):
+    """Discriminated unions should work with both dicts and model instances."""
+    code = generate_code_from_schema(simple_schema_path)
+    spec = importlib.util.spec_from_loader("disc_models", loader=None)
+    mod = importlib.util.module_from_spec(spec)
+    exec(compile(code, "<disc_models>", "exec"), mod.__dict__)
+    sys.modules["disc_models"] = mod
+
+    # Dict input — discriminator reads v.get("class")
+    data = {"members": [{"class": "Organization", "name": "Org1", "url": "https://example.com"}]}
+    record = mod.ChildRecord.model_validate(data)
+    assert len(record.members) == 1
+    assert isinstance(record.members[0], mod.OrgMember)
+    assert record.members[0].name == "Org1"
+
+    # Model instance round-trip — discriminator reads getattr(v, "class_")
+    org = mod.OrgMember(name="Org2", url="https://example.com")
+    data2 = {"members": [org]}
+    record2 = mod.ChildRecord.model_validate(data2)
+    assert isinstance(record2.members[0], mod.OrgMember)
+    assert record2.members[0].name == "Org2"
+
+    # Person variant
+    person = mod.PersonMember(name="Alice", email="alice@example.com")
+    data3 = {"members": [person, org]}
+    record3 = mod.ChildRecord.model_validate(data3)
+    assert isinstance(record3.members[0], mod.PersonMember)
+    assert isinstance(record3.members[1], mod.OrgMember)
