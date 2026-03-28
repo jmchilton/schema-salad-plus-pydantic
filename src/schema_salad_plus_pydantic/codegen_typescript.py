@@ -1,0 +1,276 @@
+"""TypeScriptCodeGen — generates TypeScript interfaces from schema-salad."""
+
+from __future__ import annotations
+
+import ast
+import re
+from collections.abc import MutableSequence
+from io import StringIO
+from typing import IO, Final
+
+from schema_salad.codegen_base import TypeDef
+from schema_salad.schema import shortname
+
+from .codegen_base import CodeGenBase
+
+_PRIM_TS: Final[dict[str, str]] = {
+    "http://www.w3.org/2001/XMLSchema#string": "string",
+    "http://www.w3.org/2001/XMLSchema#int": "number",
+    "http://www.w3.org/2001/XMLSchema#long": "number",
+    "http://www.w3.org/2001/XMLSchema#float": "number",
+    "http://www.w3.org/2001/XMLSchema#double": "number",
+    "http://www.w3.org/2001/XMLSchema#boolean": "boolean",
+    "https://w3id.org/cwl/salad#null": "null",
+    "https://w3id.org/cwl/salad#Any": "unknown",
+    "string": "string",
+    "int": "number",
+    "long": "number",
+    "float": "number",
+    "double": "number",
+    "boolean": "boolean",
+    "null": "null",
+    "Any": "unknown",
+}
+
+_PRIM_TYPEDEFS: Final[dict[str, TypeDef]] = {k: TypeDef(name=v, init=v, instance_type=v) for k, v in _PRIM_TS.items()}
+
+# Python type -> TypeScript type for pydantic:type override translation
+_PY_TO_TS_PRIMS: Final[dict[str, str]] = {
+    "str": "string",
+    "int": "number",
+    "float": "number",
+    "bool": "boolean",
+    "None": "null",
+    "Any": "unknown",
+}
+
+
+def _split_top_level(s: str, sep: str) -> list[str]:
+    """Split a string on *sep* only at the top level (not inside brackets)."""
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+    i = 0
+    while i < len(s):
+        c = s[i]
+        if c in ("[", "<", "("):
+            depth += 1
+            current.append(c)
+        elif c in ("]", ">", ")"):
+            depth -= 1
+            current.append(c)
+        elif depth == 0 and s[i : i + len(sep)] == sep:
+            parts.append("".join(current))
+            current = []
+            i += len(sep)
+            continue
+        else:
+            current.append(c)
+        i += 1
+    parts.append("".join(current))
+    return parts
+
+
+def _python_type_to_ts(py_type: str) -> str:
+    """Convert a Python type expression to TypeScript.
+
+    Handles: dict[K, V] -> Record<K, V>, list[T] -> Array<T>,
+    primitive names, and | unions.
+    """
+    py_type = py_type.strip()
+
+    # Union with | — split at top level first (lowest precedence)
+    top_parts = _split_top_level(py_type, "|")
+    if len(top_parts) > 1:
+        return " | ".join(_python_type_to_ts(p) for p in top_parts)
+
+    # dict[K, V] -> Record<K, V>
+    dict_match = re.match(r"^dict\[(.+)\]$", py_type)
+    if dict_match:
+        inner = dict_match.group(1)
+        parts = _split_top_level(inner, ",")
+        if len(parts) == 2:
+            return f"Record<{_python_type_to_ts(parts[0])}, {_python_type_to_ts(parts[1])}>"
+
+    # list[T] -> Array<T>
+    list_match = re.match(r"^list\[(.+)\]$", py_type)
+    if list_match:
+        inner = list_match.group(1)
+        return f"Array<{_python_type_to_ts(inner)}>"
+
+    # Literal["value"] or Literal['value'] -> "value"
+    literal_match = re.match(r"""^Literal\[["'](.+)["']\]$""", py_type)
+    if literal_match:
+        return f'"{literal_match.group(1)}"'
+
+    # Primitive mapping
+    if py_type in _PY_TO_TS_PRIMS:
+        return _PY_TO_TS_PRIMS[py_type]
+
+    # Class name — pass through
+    return py_type
+
+
+class TypeScriptCodeGen(CodeGenBase):
+    """Generate TypeScript interfaces and types from schema-salad definitions."""
+
+    def __init__(
+        self,
+        out: IO[str],
+        copyright: str | None = None,
+        parser_info: str = "",
+        salad_version: str = "v1.1",
+        strict: bool = False,
+    ) -> None:
+        super().__init__(out, copyright=copyright, parser_info=parser_info, salad_version=salad_version)
+
+        self._interface_code: StringIO = StringIO()
+        self._enum_code: StringIO = StringIO()
+
+        # Collect discriminator info for type guard generation
+        # (disc_field, union_type_str, disc_map)
+        self._discriminators: list[tuple[str, str, dict[str, str]]] = []
+
+    # ── backend-specific type helpers ──
+
+    def _primitive_typedefs(self) -> dict[str, TypeDef]:
+        return _PRIM_TYPEDEFS
+
+    def _array_type_str(self, inner: str) -> str:
+        return f"Array<{inner}>"
+
+    def _single_symbol_type_str(self, symbol_value: str) -> str:
+        return f'"{symbol_value}"'
+
+    def _emit_enum(self, safe: str, symbols: list[str], doc: str) -> None:
+        if doc:
+            doc_clean = doc.strip().replace("*/", "* /")
+            self._enum_code.write(f"/**\n * {doc_clean}\n */\n")
+        sym_literals = [f'"{sym}"' for sym in symbols]
+        self._enum_code.write(f"export type {safe} = {' | '.join(sym_literals)};\n\n")
+
+    # ── output methods ──
+
+    def prologue(self) -> None:
+        self.out.write("// Auto-generated by schema-salad-plus-pydantic — do not edit.\n")
+        if self.copyright:
+            self.out.write(f"// Original schema is {self.copyright}.\n")
+        self.out.write("\n")
+
+        for td in _PRIM_TYPEDEFS.values():
+            self.declare_type(td)
+
+    def begin_class(
+        self,
+        classname: str,
+        extends: MutableSequence[str],
+        doc: str,
+        abstract: bool,
+        field_names: MutableSequence[str],
+        idfield: str,
+        optional_fields: set[str],
+    ) -> None:
+        safe = self.safe_name(classname)
+        self._current_class = safe
+        self._current_extends = [self.safe_name(e) for e in extends]
+        self._classes.append(safe)
+        self._current_class_inherited_from = {}
+
+        if doc:
+            doc_clean = doc.strip().replace("*/", "* /")
+            self._interface_code.write(f"/**\n * {doc_clean}\n */\n")
+
+        extends_clause = ""
+        if self._current_extends:
+            extends_clause = f" extends {', '.join(self._current_extends)}"
+
+        self._interface_code.write(f"export interface {safe}{extends_clause} {{\n")
+
+    def end_class(self, classname: str, field_names: list[str]) -> None:
+        self._interface_code.write("}\n\n")
+        self._current_class = ""
+        self._current_extends = []
+        self._current_class_inherited_from = {}
+
+    def declare_field(
+        self,
+        name: str,
+        fieldtype: TypeDef,
+        doc: str | None,
+        optional: bool,
+        subscope: str | None,
+    ) -> None:
+        inherited_from = self._current_class_inherited_from.get(shortname(name))
+        if inherited_from and inherited_from in self._current_extends:
+            self._clear_field_annotations()
+            return
+
+        json_key = shortname(name)
+
+        # Determine property name
+        if self._field_pydantic_alias:
+            prop_name = self._field_pydantic_alias
+        else:
+            prop_name = json_key
+
+        # Determine type annotation
+        if self._field_pydantic_type:
+            type_ann = _python_type_to_ts(self._field_pydantic_type)
+            # If field is optional and the override doesn't include null, add it
+            if optional and "null" not in type_ann:
+                type_ann = f"{type_ann} | null"
+        else:
+            type_ann = fieldtype.instance_type or fieldtype.name
+            if optional and "null" not in type_ann:
+                type_ann = f"{type_ann} | null"
+
+        # Collect discriminator info for type guards
+        if self._field_pydantic_discriminator_field and self._field_pydantic_discriminator_map:
+            disc_map = ast.literal_eval(self._field_pydantic_discriminator_map)
+            # Build the union type for the type guard parameter
+            union_parts = list(disc_map.values())
+            union_type = " | ".join(union_parts)
+            self._discriminators.append((self._field_pydantic_discriminator_field, union_type, disc_map))
+
+        # Quote property name if it contains special characters
+        needs_quote = "-" in prop_name
+        if needs_quote:
+            prop_str = f'"{prop_name}"'
+        else:
+            prop_str = prop_name
+
+        optional_marker = "?" if optional else ""
+
+        if doc:
+            doc_escaped = doc.strip().replace("*/", "* /").replace("\n", " ")
+            if len(doc_escaped) > 200:
+                doc_escaped = doc_escaped[:197] + "..."
+            self._interface_code.write(f"  /** {doc_escaped} */\n")
+
+        self._interface_code.write(f"  {prop_str}{optional_marker}: {type_ann};\n")
+
+        self._clear_field_annotations()
+
+    def declare_id_field(
+        self,
+        name: str,
+        fieldtype: TypeDef,
+        doc: str | None,
+        optional: bool,
+    ) -> None:
+        self.declare_field(name, fieldtype, doc, optional, None)
+
+    def epilogue(self, root_loader: TypeDef) -> None:
+        # Emit type aliases (enums) first
+        self.out.write(self._enum_code.getvalue())
+
+        # Emit interfaces
+        self.out.write(self._interface_code.getvalue())
+
+        # Emit type guard functions for discriminated unions
+        for disc_field, union_type, disc_map in self._discriminators:
+            for disc_value, type_name in disc_map.items():
+                func_name = f"is{type_name}"
+                self.out.write(f"export function {func_name}(v: {union_type}): v is {type_name} {{\n")
+                self.out.write(f'  return v?.{disc_field} === "{disc_value}";\n')
+                self.out.write("}\n\n")
