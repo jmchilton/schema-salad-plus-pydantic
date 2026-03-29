@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import ast
 import re
-from collections import OrderedDict
 from collections.abc import MutableSequence
 from io import StringIO
-from typing import IO, Any, Final
+from typing import IO, Final
 
-from schema_salad import schema
-from schema_salad.codegen_base import LazyInitDef, TypeDef
+from schema_salad.codegen_base import TypeDef
 from schema_salad.schema import shortname
+
+from .codegen_base import CodeGenBase
 
 # Primitive type mappings — we map to Python/pydantic types, not loader classes
 _PRIM_PYTHON: Final[dict[str, str]] = {
@@ -39,13 +39,8 @@ _PRIM_TYPEDEFS: Final[dict[str, TypeDef]] = {
 }
 
 
-class PydanticCodeGen:
-    """Generate pydantic v2 BaseModel classes from schema-salad definitions.
-
-    Implements the same interface as CodeGenBase but without inheriting from it,
-    because schema-salad ships as Cython-compiled .so files which block subclassing
-    at instantiation time.
-    """
+class PydanticCodeGen(CodeGenBase):
+    """Generate pydantic v2 BaseModel classes from schema-salad definitions."""
 
     def __init__(
         self,
@@ -55,53 +50,34 @@ class PydanticCodeGen:
         salad_version: str = "v1.1",
         strict: bool = False,
     ) -> None:
-        # CodeGenBase state (reimplemented to avoid Cython inheritance issue)
-        self.collected_types: OrderedDict[str, TypeDef] = OrderedDict()
-        self.lazy_inits: OrderedDict[str, LazyInitDef] = OrderedDict()
-        self.vocab: dict[str, str] = {}
-
-        self.out: Final = out
-        self.copyright = copyright
-        self.parser_info = parser_info
-        self.salad_version = salad_version
+        super().__init__(out, copyright=copyright, parser_info=parser_info, salad_version=salad_version)
         self._extra: Final[str] = "forbid" if strict else "allow"
 
-        # State tracking
-        self._current_class: str = ""
-        self._current_extends: list[str] = []
-        self._classes: list[str] = []
         self._enum_code: StringIO = StringIO()
         self._class_code: StringIO = StringIO()
-        self._enums_emitted: set[str] = set()
 
-        # Per-field pydantic annotation overrides (set by orchestrator before declare_field)
-        self._field_pydantic_type: str | None = None
-        self._field_pydantic_alias: str | None = None
-        self._field_pydantic_discriminator_field: str | None = None
-        self._field_pydantic_discriminator_map: str | None = None
+    # ── backend-specific type helpers ──
 
-        # Track inherited fields per class for filtering
-        self._current_class_inherited_from: dict[str, str] = {}
+    def _primitive_typedefs(self) -> dict[str, TypeDef]:
+        return _PRIM_TYPEDEFS
 
-    def declare_type(self, declared_type: TypeDef) -> TypeDef:
-        if declared_type not in self.collected_types.values():
-            self.collected_types[declared_type.name] = declared_type
-        return declared_type
+    def _array_type_str(self, inner: str) -> str:
+        return f"list[{inner}]"
 
-    def add_lazy_init(self, lazy_init: LazyInitDef) -> None:
-        self.lazy_inits[lazy_init.name] = lazy_init
+    def _single_symbol_type_str(self, symbol_value: str) -> str:
+        return f'Literal["{symbol_value}"]'
 
-    def add_vocab(self, name: str, uri: str) -> None:
-        self.vocab[name] = uri
+    def _emit_enum(self, safe: str, symbols: list[str], doc: str) -> None:
+        self._enum_code.write(f"\nclass {safe}(str, Enum):\n")
+        if doc:
+            doc_clean = doc.strip().replace('"""', "'''")
+            self._enum_code.write(f'    """{doc_clean}"""\n\n')
+        for sym in symbols:
+            py_name = sym.replace("-", "_").replace(".", "_")
+            self._enum_code.write(f'    {py_name} = "{sym}"\n')
+        self._enum_code.write("\n")
 
-    @staticmethod
-    def safe_name(name: str) -> str:
-        avn = schema.avro_field_name(name)
-        if avn.startswith("anon."):
-            avn = avn[5:]
-        elif avn and avn[0].isdigit():
-            avn = f"_{avn}"
-        return avn.replace(".", "_")
+    # ── output methods ──
 
     def _python_name(self, name: str) -> str:
         """Convert a field name to a Python-safe identifier."""
@@ -164,134 +140,6 @@ from pydantic import BaseModel, ConfigDict, Field, Discriminator, Tag
         self._current_class = ""
         self._current_extends = []
         self._current_class_inherited_from = {}
-
-    def type_loader(
-        self,
-        type_declaration: list[Any] | dict[str, Any] | str,
-        container: str | None = None,
-        no_link_check: bool | None = None,
-    ) -> TypeDef:
-        td = type_declaration
-
-        if isinstance(td, MutableSequence):
-            # Union type (schema list of alternatives)
-            parts = []
-            for item in td:
-                sub = self.type_loader(item)
-                parts.append(sub.instance_type or sub.name)
-            seen: set[str] = set()
-            unique_parts: list[str] = []
-            for p in parts:
-                if p not in seen:
-                    seen.add(p)
-                    unique_parts.append(p)
-            union_str = " | ".join(unique_parts)
-            name = "union_of_" + "_or_".join(unique_parts)
-            return self.declare_type(TypeDef(name=name, init=union_str, instance_type=union_str))
-
-        if isinstance(td, dict):
-            t = td.get("type")
-            if t in ("array", "https://w3id.org/cwl/salad#array") and "items" in td:
-                items = td["items"]
-                if isinstance(items, list):
-                    inner_parts = []
-                    for it in items:
-                        inner_td = self.type_loader(it)
-                        inner_parts.append(inner_td.instance_type or inner_td.name)
-                    inner_str = " | ".join(inner_parts)
-                    type_str = f"list[{inner_str}]"
-                else:
-                    inner = self.type_loader(items)
-                    type_str = f"list[{inner.instance_type or inner.name}]"
-                return self.declare_type(TypeDef(name=f"array_{type_str}", init=type_str, instance_type=type_str))
-
-            if t in ("enum", "https://w3id.org/cwl/salad#enum") and "symbols" in td and "name" in td:
-                symbols = td["symbols"]
-                name = td["name"]
-                rest = {k: v for k, v in td.items() if k not in ("type", "symbols", "name")}
-                safe = self.safe_name(name)
-                for sym in symbols:
-                    self.add_vocab(shortname(sym), sym)
-
-                if len(symbols) == 1:
-                    sym_val = shortname(symbols[0])
-                    type_str = f'Literal["{sym_val}"]'
-                    return self.declare_type(TypeDef(name=f"{safe}Loader", init=type_str, instance_type=type_str))
-                if safe not in self._enums_emitted:
-                    self._enums_emitted.add(safe)
-                    self._enum_code.write(f"\nclass {safe}(str, Enum):\n")
-                    doc = rest.get("doc", "")
-                    if doc:
-                        if isinstance(doc, list):
-                            doc = "\n".join(doc)
-                        doc_clean = str(doc).strip().replace('"""', "'''")
-                        self._enum_code.write(f'    """{doc_clean}"""\n\n')
-                    for sym in symbols:
-                        sym_short = shortname(sym)
-                        py_name = sym_short.replace("-", "_").replace(".", "_")
-                        self._enum_code.write(f'    {py_name} = "{sym_short}"\n')
-                    self._enum_code.write("\n")
-
-                return self.declare_type(TypeDef(name=f"{safe}Loader", init=safe, instance_type=safe))
-
-            if t in ("record", "https://w3id.org/cwl/salad#record") and "name" in td:
-                name = td["name"]
-                rest = {k: v for k, v in td.items() if k not in ("type", "name")}
-                safe = self.safe_name(name)
-                return self.declare_type(
-                    TypeDef(
-                        name=f"{safe}Loader",
-                        init=safe,
-                        instance_type=safe,
-                        abstract=bool(rest.get("abstract", False)),
-                    )
-                )
-
-            if (
-                t in ("union", "https://w3id.org/cwl/salad#union")
-                and "name" in td
-                and isinstance(td.get("names"), list)
-            ):
-                name = td["name"]
-                names = td["names"]
-                safe = self.safe_name(name)
-                loader_name = f"{safe}Loader"
-                parts = []
-                for n in names:
-                    inner_td = self.type_loader(n)
-                    parts.append(inner_td.instance_type or inner_td.name)
-                union_str = " | ".join(parts)
-                return self.declare_type(TypeDef(name=loader_name, init=union_str, instance_type=union_str))
-
-        if isinstance(td, str):
-            if td in _PRIM_TYPEDEFS:
-                return _PRIM_TYPEDEFS[td]
-            safe = self.safe_name(td)
-            loader_key = f"{safe}Loader"
-            if loader_key in self.collected_types:
-                return self.collected_types[loader_key]
-            return self.declare_type(TypeDef(name=loader_key, init=safe, instance_type=safe))
-
-        raise ValueError(f"Unhandled type declaration: {type_declaration}")
-
-    def set_field_annotations(
-        self,
-        pydantic_type: str | None = None,
-        pydantic_alias: str | None = None,
-        discriminator_field: str | None = None,
-        discriminator_map: str | None = None,
-    ) -> None:
-        """Set pydantic annotation overrides for the next declare_field call."""
-        self._field_pydantic_type = pydantic_type
-        self._field_pydantic_alias = pydantic_alias
-        self._field_pydantic_discriminator_field = discriminator_field
-        self._field_pydantic_discriminator_map = discriminator_map
-
-    def _clear_field_annotations(self) -> None:
-        self._field_pydantic_type = None
-        self._field_pydantic_alias = None
-        self._field_pydantic_discriminator_field = None
-        self._field_pydantic_discriminator_map = None
 
     @staticmethod
     def _build_discriminated_type(type_ann: str, tag_map: dict[str, str], disc_func: str) -> str:
@@ -445,25 +293,6 @@ from pydantic import BaseModel, ConfigDict, Field, Discriminator, Tag
         # Treat @id fields as normal fields in pydantic
         self.declare_field(name, fieldtype, doc, optional, None)
 
-    def uri_loader(
-        self,
-        inner: TypeDef,
-        scoped_id: bool,
-        vocab_term: bool,
-        ref_scope: int | None,
-        no_link_check: bool | None = None,
-    ) -> TypeDef:
-        return inner
-
-    def idmap_loader(self, field: str, inner: TypeDef, map_subject: str, map_predicate: str | None) -> TypeDef:
-        return inner
-
-    def typedsl_loader(self, inner: TypeDef, ref_scope: int | None) -> TypeDef:
-        return inner
-
-    def secondaryfilesdsl_loader(self, inner: TypeDef) -> TypeDef:
-        return inner
-
     def epilogue(self, root_loader: TypeDef) -> None:
         # Emit enums first
         self.out.write(self._enum_code.getvalue())
@@ -517,8 +346,3 @@ def _load_single(data: dict[str, Any]) -> {single_type}:
             self.out.write(f"    return {single_parts[0]}.model_validate(data)\n")
         else:
             self.out.write("    raise ValueError('Cannot load document')\n")
-
-    def mark_field_inherited(self, field_shortname: str, inherited_from: str) -> None:
-        """Mark a field as inherited from a parent class."""
-        parent_safe = self.safe_name(inherited_from)
-        self._current_class_inherited_from[field_shortname] = parent_safe

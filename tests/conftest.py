@@ -37,3 +37,17 @@ def generate_code_from_schema():
         return buf.getvalue()
 
     return _generate
+
+
+@pytest.fixture
+def generate_typescript_from_schema():
+    """Factory fixture: generate TypeScript code from a schema path, return the code string."""
+
+    def _generate(schema_path: str | Path, *, strict: bool = False) -> str:
+        from schema_salad_plus_pydantic.orchestrate import generate_from_schema
+
+        buf = StringIO()
+        generate_from_schema(str(schema_path), buf, strict=strict, output_format="typescript")
+        return buf.getvalue()
+
+    return _generate

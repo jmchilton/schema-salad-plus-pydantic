@@ -16,6 +16,8 @@ from schema_salad.schema import shortname
 from schema_salad.utils import aslist
 
 from .codegen import PydanticCodeGen
+from .codegen_base import CodeGenBase
+from .codegen_typescript import TypeScriptCodeGen
 
 FIELD_SORT_ORDER: Final = ["class", "id", "name"]
 _NULL_TYPES: Final = {"null", "https://w3id.org/cwl/salad#null"}
@@ -35,11 +37,16 @@ def generate(
     copyright: str | None = None,
     parser_info: str = "",
     strict: bool = False,
+    output_format: str = "pydantic",
 ) -> None:
-    """Generate pydantic models from pre-loaded schema items."""
+    """Generate models from pre-loaded schema items."""
     j = schema.extend_and_specialize(schema_items, loader)
 
-    gen = PydanticCodeGen(out, copyright=copyright, parser_info=parser_info, strict=strict)
+    gen: CodeGenBase
+    if output_format == "typescript":
+        gen = TypeScriptCodeGen(out, copyright=copyright, parser_info=parser_info)
+    else:
+        gen = PydanticCodeGen(out, copyright=copyright, parser_info=parser_info, strict=strict)
     gen.prologue()
 
     document_roots: list[str] = []
@@ -176,7 +183,7 @@ def _get_pydantic_key(field: dict[str, Any], key: str) -> Any | None:
     return None
 
 
-def _set_pydantic_annotations(gen: PydanticCodeGen, field: dict[str, Any]) -> None:
+def _set_pydantic_annotations(gen: CodeGenBase, field: dict[str, Any]) -> None:
     """Extract pydantic:* annotations from a field dict and set them on the generator."""
     gen.set_field_annotations(
         pydantic_type=_get_pydantic_key(field, "type"),
@@ -192,8 +199,9 @@ def generate_from_schema(
     copyright: str | None = None,
     parser_info: str = "",
     strict: bool = False,
+    output_format: str = "pydantic",
 ) -> None:
-    """Load a schema-salad schema file and generate pydantic models.
+    """Load a schema-salad schema file and generate models.
 
     Uses the metaschema loader directly (like schema-salad-tool --codegen)
     instead of load_schema(), which runs Avro validation that rejects
@@ -227,4 +235,5 @@ def generate_from_schema(
         copyright=copyright,
         parser_info=parser_info,
         strict=strict,
+        output_format=output_format,
     )

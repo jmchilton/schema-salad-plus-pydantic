@@ -12,7 +12,7 @@ from .orchestrate import generate_from_schema
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="schema-salad-plus-pydantic",
-        description="Generate pydantic v2 models from schema-salad definitions",
+        description="Generate pydantic v2 models or TypeScript interfaces from schema-salad definitions",
     )
     subparsers = parser.add_subparsers(dest="command")
 
@@ -25,6 +25,12 @@ def main(argv: list[str] | None = None) -> None:
         "--strict",
         action="store_true",
         help="Emit models with extra='forbid' (reject unknown fields); default is extra='allow'",
+    )
+    gen_parser.add_argument(
+        "--format",
+        choices=["pydantic", "typescript"],
+        default="pydantic",
+        help="Output format (default: pydantic)",
     )
 
     doc_parser = subparsers.add_parser("enhance-docs", help="Enhance schema-salad-doc HTML with pydantic types")
@@ -43,6 +49,7 @@ def main(argv: list[str] | None = None) -> None:
                     copyright=args.copyright,
                     parser_info=args.parser_info,
                     strict=args.strict,
+                    output_format=args.format,
                 )
         else:
             generate_from_schema(
@@ -51,6 +58,7 @@ def main(argv: list[str] | None = None) -> None:
                 copyright=args.copyright,
                 parser_info=args.parser_info,
                 strict=args.strict,
+                output_format=args.format,
             )
     elif args.command == "enhance-docs":
         enhance_docs(args.schema, args.html, args.output)
