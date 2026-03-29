@@ -1,13 +1,14 @@
 # schema-salad-plus-pydantic
 
-Generate [pydantic v2](https://docs.pydantic.dev/) `BaseModel` classes from
+Generate [pydantic v2](https://docs.pydantic.dev/) `BaseModel` classes and
+TypeScript interfaces from
 [schema-salad](https://www.commonwl.org/v1.2/SchemaSalad.html) definitions.
 
 ## What it does
 
 Schema-salad defines record types, enums, inheritance, and unions in YAML.
-This tool reads those definitions and emits a Python module of pydantic
-`BaseModel` classes that can validate, parse, and serialize data conforming
+This tool reads those definitions and emits either a Python module of pydantic
+`BaseModel` classes or a TypeScript module of interfaces, both conforming
 to the schema.
 
 Key features:
@@ -22,6 +23,8 @@ Key features:
   enums become `Literal["value"]` with auto-defaults.
 - **Forward references** -- `model_rebuild()` for all classes, `from __future__ import annotations`.
 - **Permissive by default** -- `extra="allow"`, `populate_by_name=True`.
+- **TypeScript output** -- `--format=typescript` emits interfaces, string
+  union enums, and type guard functions for discriminated unions.
 
 ## Installation
 
@@ -47,6 +50,12 @@ schema-salad-plus-pydantic generate schema.yml -o models.py
 
 Pass `--strict` to emit models with `extra="forbid"` (reject unknown JSON keys); the default is permissive `extra="allow"`.
 
+Generate TypeScript interfaces instead:
+
+```bash
+schema-salad-plus-pydantic generate schema.yml --format typescript -o models.ts
+```
+
 Or write to stdout:
 
 ```bash
@@ -70,6 +79,10 @@ with open("models.py", "w") as f:
 # Optional: strict=True emits models with extra="forbid" (unknown keys rejected)
 with open("models_strict.py", "w") as f:
     generate_from_schema("path/to/schema.yml", f, strict=True)
+
+# Generate TypeScript interfaces
+with open("models.ts", "w") as f:
+    generate_from_schema("path/to/schema.yml", f, output_format="typescript")
 ```
 
 ### Using the generated models
@@ -120,6 +133,27 @@ $graph:
       pydantic:type: "list[Person | Organization] | None"
       pydantic:discriminator_field: "class"
       pydantic:discriminator_map: '{"Person": "Person", "Organization": "Organization"}'
+```
+
+### TypeScript output
+
+With `--format=typescript`, the same schema annotations produce TypeScript
+interfaces with mapped types:
+
+| Python / pydantic | TypeScript |
+|---|---|
+| `dict[str, Step]` | `Record<string, Step>` |
+| `list[Person \| Organization]` | `Array<Person \| Organization>` |
+| `Literal["value"]` | `"value"` (string literal) |
+| `int`, `float` | `number` |
+| `str` | `string` |
+
+Discriminated unions emit type guard functions:
+
+```typescript
+export function isPerson(v: Person | Organization): v is Person {
+  return v?.class === "Person";
+}
 ```
 
 ## Development
