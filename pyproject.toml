@@ -55,6 +55,7 @@ mypy = [
 ]
 test = [
     "pytest",
+    "nodejs-wheel",
 ]
 release = [
     "build",

@@ -17,6 +17,7 @@ from schema_salad.utils import aslist
 
 from .codegen import PydanticCodeGen
 from .codegen_base import CodeGenBase
+from .codegen_effect_schema import EffectSchemaCodeGen
 from .codegen_typescript import TypeScriptCodeGen
 
 FIELD_SORT_ORDER: Final = ["class", "id", "name"]
@@ -45,6 +46,8 @@ def generate(
     gen: CodeGenBase
     if output_format == "typescript":
         gen = TypeScriptCodeGen(out, copyright=copyright, parser_info=parser_info)
+    elif output_format == "effect-schema":
+        gen = EffectSchemaCodeGen(out, copyright=copyright, parser_info=parser_info)
     else:
         gen = PydanticCodeGen(out, copyright=copyright, parser_info=parser_info, strict=strict)
     gen.prologue()

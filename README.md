@@ -1,15 +1,16 @@
 # schema-salad-plus-pydantic
 
-Generate [pydantic v2](https://docs.pydantic.dev/) `BaseModel` classes and
-TypeScript interfaces from
-[schema-salad](https://www.commonwl.org/v1.2/SchemaSalad.html) definitions.
+Generate [pydantic v2](https://docs.pydantic.dev/) `BaseModel` classes,
+TypeScript interfaces, and [Effect Schema](https://effect.website/docs/schema/)
+modules from [schema-salad](https://www.commonwl.org/v1.2/SchemaSalad.html)
+definitions.
 
 ## What it does
 
 Schema-salad defines record types, enums, inheritance, and unions in YAML.
-This tool reads those definitions and emits either a Python module of pydantic
-`BaseModel` classes or a TypeScript module of interfaces, both conforming
-to the schema.
+This tool reads those definitions and emits a Python module of pydantic
+`BaseModel` classes, a TypeScript module of interfaces, or an Effect Schema
+TypeScript module with runtime validation -- all conforming to the schema.
 
 Key features:
 
@@ -25,6 +26,9 @@ Key features:
 - **Permissive by default** -- `extra="allow"`, `populate_by_name=True`.
 - **TypeScript output** -- `--format=typescript` emits interfaces, string
   union enums, and type guard functions for discriminated unions.
+- **Effect Schema output** -- `--format=effect-schema` emits `Schema.Struct`
+  definitions with runtime validation via `Schema.decodeUnknownSync()`,
+  discriminated unions, and type guards.
 
 ## Installation
 
@@ -50,10 +54,16 @@ schema-salad-plus-pydantic generate schema.yml -o models.py
 
 Pass `--strict` to emit models with `extra="forbid"` (reject unknown JSON keys); the default is permissive `extra="allow"`.
 
-Generate TypeScript interfaces instead:
+Generate TypeScript interfaces:
 
 ```bash
 schema-salad-plus-pydantic generate schema.yml --format typescript -o models.ts
+```
+
+Generate Effect Schema TypeScript (with runtime validation):
+
+```bash
+schema-salad-plus-pydantic generate schema.yml --format effect-schema -o models.ts
 ```
 
 Or write to stdout:
@@ -83,6 +93,10 @@ with open("models_strict.py", "w") as f:
 # Generate TypeScript interfaces
 with open("models.ts", "w") as f:
     generate_from_schema("path/to/schema.yml", f, output_format="typescript")
+
+# Generate Effect Schema TypeScript (runtime validation)
+with open("models.ts", "w") as f:
+    generate_from_schema("path/to/schema.yml", f, output_format="effect-schema")
 ```
 
 ### Using the generated models
@@ -155,6 +169,44 @@ export function isPerson(v: Person | Organization): v is Person {
   return v?.class === "Person";
 }
 ```
+
+### Effect Schema output
+
+With `--format=effect-schema`, the tool generates TypeScript using
+[Effect Schema](https://effect.website/docs/schema/) which provides both
+compile-time types and runtime validation:
+
+| Python / pydantic | Effect Schema |
+|---|---|
+| `dict[str, Step]` | `Schema.Record({ key: Schema.String, value: StepSchema })` |
+| `list[Person \| Organization]` | `Schema.Array(Schema.Union(PersonSchema, OrganizationSchema))` |
+| `Literal["value"]` | `Schema.Literal("value")` |
+| `int`, `float` | `Schema.Number` |
+| `str` | `Schema.String` |
+| enum (multi-symbol) | `Schema.Literal("a", "b", "c")` |
+| optional field | `Schema.optional(T)` |
+| inheritance | `...ParentSchema.fields` spread |
+
+Records become `Schema.Struct` definitions with derived type aliases:
+
+```typescript
+import { Schema } from "effect"
+
+export const MyRecordSchema = Schema.Struct({
+  name: Schema.optional(Schema.Union(Schema.Null, Schema.String)),
+  status: Schema.optional(Schema.Union(Schema.Null, StatusEnumSchema)),
+})
+export type MyRecord = typeof MyRecordSchema.Type
+
+// Runtime validation
+const record = Schema.decodeUnknownSync(MyRecordSchema)({
+  name: "example",
+  status: "active",
+})
+```
+
+Circular references (e.g. recursive schemas) are handled automatically
+via `Schema.suspend`.
 
 ## Development
 

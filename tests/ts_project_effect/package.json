@@ -1,0 +1,10 @@
+{
+  "name": "schema-salad-effect-schema-tests",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "typescript": "^5",
+    "@types/node": "^22",
+    "effect": "^3"
+  }
+}
