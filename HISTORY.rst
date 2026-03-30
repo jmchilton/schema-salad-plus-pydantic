@@ -6,9 +6,12 @@ History
 .. to_doc
 
 ---------------------
-0.1.5.dev0
+0.1.5 (2026-03-30)
 ---------------------
 
+* Add TypeScript code generation backend.
+* Add Effect Schema TypeScript code generation backend.
+* Add TypeScript roundtrip tests using nodejs-wheel.
 
 ---------------------
 0.1.4 (2026-03-24)
