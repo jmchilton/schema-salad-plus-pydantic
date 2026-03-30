@@ -28,7 +28,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     gen_parser.add_argument(
         "--format",
-        choices=["pydantic", "typescript"],
+        choices=["pydantic", "typescript", "effect-schema"],
         default="pydantic",
         help="Output format (default: pydantic)",
     )

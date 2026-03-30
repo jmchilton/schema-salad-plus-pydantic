@@ -12,6 +12,32 @@ from schema_salad.codegen_base import LazyInitDef, TypeDef
 from schema_salad.schema import shortname
 
 
+def split_top_level(s: str, sep: str) -> list[str]:
+    """Split a string on *sep* only at the top level (not inside brackets)."""
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+    i = 0
+    while i < len(s):
+        c = s[i]
+        if c in ("[", "<", "("):
+            depth += 1
+            current.append(c)
+        elif c in ("]", ">", ")"):
+            depth -= 1
+            current.append(c)
+        elif depth == 0 and s[i : i + len(sep)] == sep:
+            parts.append("".join(current))
+            current = []
+            i += len(sep)
+            continue
+        else:
+            current.append(c)
+        i += 1
+    parts.append("".join(current))
+    return parts
+
+
 class CodeGenBase(ABC):
     """Base class for schema-salad code generation backends.
 
@@ -134,6 +160,14 @@ class CodeGenBase(ABC):
     def _single_symbol_type_str(self, symbol_value: str) -> str:
         """Return the type string for a single-symbol enum."""
 
+    def _union_type_str(self, parts: list[str]) -> str:
+        """Return the union type string for the backend (e.g. A | B or Schema.Union(A, B))."""
+        return " | ".join(parts)
+
+    def _type_ref_str(self, safe_name: str) -> str:
+        """Return the type reference string for a named type (record/enum)."""
+        return safe_name
+
     def type_loader(
         self,
         type_declaration: list[Any] | dict[str, Any] | str,
@@ -154,7 +188,7 @@ class CodeGenBase(ABC):
                 if p not in seen:
                     seen.add(p)
                     unique_parts.append(p)
-            union_str = " | ".join(unique_parts)
+            union_str = self._union_type_str(unique_parts)
             name = "union_of_" + "_or_".join(unique_parts)
             return self.declare_type(TypeDef(name=name, init=union_str, instance_type=union_str))
 
@@ -167,7 +201,7 @@ class CodeGenBase(ABC):
                     for it in items:
                         inner_td = self.type_loader(it)
                         inner_parts.append(inner_td.instance_type or inner_td.name)
-                    inner_str = " | ".join(inner_parts)
+                    inner_str = self._union_type_str(inner_parts)
                     type_str = self._array_type_str(inner_str)
                 else:
                     inner = self.type_loader(items)
@@ -193,17 +227,19 @@ class CodeGenBase(ABC):
                         doc = "\n".join(doc)
                     self._emit_enum(safe, [shortname(s) for s in symbols], str(doc))
 
-                return self.declare_type(TypeDef(name=f"{safe}Loader", init=safe, instance_type=safe))
+                ref = self._type_ref_str(safe)
+                return self.declare_type(TypeDef(name=f"{safe}Loader", init=ref, instance_type=ref))
 
             if t in ("record", "https://w3id.org/cwl/salad#record") and "name" in td:
                 name = td["name"]
                 rest = {k: v for k, v in td.items() if k not in ("type", "name")}
                 safe = self.safe_name(name)
+                ref = self._type_ref_str(safe)
                 return self.declare_type(
                     TypeDef(
                         name=f"{safe}Loader",
-                        init=safe,
-                        instance_type=safe,
+                        init=ref,
+                        instance_type=ref,
                         abstract=bool(rest.get("abstract", False)),
                     )
                 )
@@ -221,7 +257,7 @@ class CodeGenBase(ABC):
                 for n in names:
                     inner_td = self.type_loader(n)
                     parts.append(inner_td.instance_type or inner_td.name)
-                union_str = " | ".join(parts)
+                union_str = self._union_type_str(parts)
                 return self.declare_type(TypeDef(name=loader_name, init=union_str, instance_type=union_str))
 
         if isinstance(td, str):
@@ -231,7 +267,8 @@ class CodeGenBase(ABC):
             loader_key = f"{safe}Loader"
             if loader_key in self.collected_types:
                 return self.collected_types[loader_key]
-            return self.declare_type(TypeDef(name=loader_key, init=safe, instance_type=safe))
+            ref = self._type_ref_str(safe)
+            return self.declare_type(TypeDef(name=loader_key, init=ref, instance_type=ref))
 
         raise ValueError(f"Unhandled type declaration: {type_declaration}")
 

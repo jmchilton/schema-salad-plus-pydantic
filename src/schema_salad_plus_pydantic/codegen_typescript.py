@@ -11,7 +11,7 @@ from typing import IO, Final
 from schema_salad.codegen_base import TypeDef
 from schema_salad.schema import shortname
 
-from .codegen_base import CodeGenBase
+from .codegen_base import CodeGenBase, split_top_level
 
 _PRIM_TS: Final[dict[str, str]] = {
     "http://www.w3.org/2001/XMLSchema#string": "string",
@@ -45,32 +45,6 @@ _PY_TO_TS_PRIMS: Final[dict[str, str]] = {
 }
 
 
-def _split_top_level(s: str, sep: str) -> list[str]:
-    """Split a string on *sep* only at the top level (not inside brackets)."""
-    parts: list[str] = []
-    depth = 0
-    current: list[str] = []
-    i = 0
-    while i < len(s):
-        c = s[i]
-        if c in ("[", "<", "("):
-            depth += 1
-            current.append(c)
-        elif c in ("]", ">", ")"):
-            depth -= 1
-            current.append(c)
-        elif depth == 0 and s[i : i + len(sep)] == sep:
-            parts.append("".join(current))
-            current = []
-            i += len(sep)
-            continue
-        else:
-            current.append(c)
-        i += 1
-    parts.append("".join(current))
-    return parts
-
-
 def _python_type_to_ts(py_type: str) -> str:
     """Convert a Python type expression to TypeScript.
 
@@ -80,7 +54,7 @@ def _python_type_to_ts(py_type: str) -> str:
     py_type = py_type.strip()
 
     # Union with | — split at top level first (lowest precedence)
-    top_parts = _split_top_level(py_type, "|")
+    top_parts = split_top_level(py_type, "|")
     if len(top_parts) > 1:
         return " | ".join(_python_type_to_ts(p) for p in top_parts)
 
@@ -88,7 +62,7 @@ def _python_type_to_ts(py_type: str) -> str:
     dict_match = re.match(r"^dict\[(.+)\]$", py_type)
     if dict_match:
         inner = dict_match.group(1)
-        parts = _split_top_level(inner, ",")
+        parts = split_top_level(inner, ",")
         if len(parts) == 2:
             return f"Record<{_python_type_to_ts(parts[0])}, {_python_type_to_ts(parts[1])}>"
 
@@ -233,7 +207,7 @@ class TypeScriptCodeGen(CodeGenBase):
             self._discriminators.append((self._field_pydantic_discriminator_field, union_type, disc_map))
 
         # Quote property name if it contains special characters
-        needs_quote = "-" in prop_name
+        needs_quote = not prop_name.isidentifier() or "-" in prop_name
         if needs_quote:
             prop_str = f'"{prop_name}"'
         else:
