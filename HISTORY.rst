@@ -6,8 +6,11 @@ History
 .. to_doc
 
 ---------------------
-0.1.8.dev0
+0.1.8 (2026-04-04)
 ---------------------
+
+* Fix multi-value ``Literal`` fields producing invalid ``default=`` in ``Field()`` (greedy regex captured all values instead of first).
+* Fix TypeScript codegen for multi-value ``Literal`` types — now emits proper union types.
 
 
 ---------------------
