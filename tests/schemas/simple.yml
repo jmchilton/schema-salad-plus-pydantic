@@ -139,3 +139,59 @@ $graph:
     - PersonMember
     - OrgMember
   doc: A member, either person or org.
+
+- name: ShapeType
+  type: enum
+  symbols:
+    - circle
+  doc: Single-symbol shape discriminator for circles.
+
+- name: BoxType
+  type: enum
+  symbols:
+    - box
+    - rectangle
+  doc: Multi-symbol shape discriminator for boxes.
+
+- name: Circle
+  type: record
+  doc: A circle shape.
+  fields:
+    - name: kind
+      type: ShapeType
+      jsonldPredicate:
+        "_id": "@type"
+        "_type": "@vocab"
+      doc: Shape discriminator.
+    - name: radius
+      type: float
+      doc: Circle radius.
+
+- name: Box
+  type: record
+  doc: A box or rectangle shape.
+  fields:
+    - name: kind
+      type: BoxType
+      jsonldPredicate:
+        "_id": "@type"
+        "_type": "@vocab"
+      doc: Shape discriminator.
+    - name: width
+      type: float
+      doc: Box width.
+
+- name: Canvas
+  type: record
+  doc: A canvas with shapes.
+  fields:
+    - name: shapes
+      type: Any?
+      jsonldPredicate:
+        _id: "test:Canvas/shapes"
+        noLinkCheck: true
+      pydantic:type: "list[Circle | Box] | dict[str, Circle | Box] | None"
+      pydantic:discriminator_field: "kind"
+      pydantic:discriminator_map: '{"circle": "Circle", "box": "Box", "rectangle": "Box"}'
+      pydantic:discriminator_default: "Box"
+      doc: Shapes on the canvas.

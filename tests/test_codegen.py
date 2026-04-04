@@ -190,3 +190,61 @@ def test_discriminated_union_with_model_instances(generate_code_from_schema, sim
     record3 = mod.ChildRecord.model_validate(data3)
     assert isinstance(record3.members[0], mod.PersonMember)
     assert isinstance(record3.members[1], mod.OrgMember)
+
+
+def test_multi_value_discriminator_map(generate_code_from_schema, simple_schema_path):
+    """Multi-value discriminator map should produce correct disc function with all entries."""
+    code = generate_code_from_schema(simple_schema_path)
+    assert '"circle": "Circle"' in code
+    assert '"box": "Box"' in code
+    assert '"rectangle": "Box"' in code
+
+
+def test_discriminator_default(generate_code_from_schema, simple_schema_path):
+    """Discriminator with default should use default fallback instead of disc_val."""
+    code = generate_code_from_schema(simple_schema_path)
+    # _discriminate_shapes should use "Box" as default
+    assert 'disc_map.get(disc_val, "Box")' in code
+    # _discriminate_members should NOT have a default (uses disc_val fallback)
+    assert "disc_map.get(disc_val, disc_val)" in code
+
+
+def test_complex_type_with_discriminator(generate_code_from_schema, simple_schema_path):
+    """list[A|B] | dict[str, A|B] should apply discriminator only to list branch."""
+    code = generate_code_from_schema(simple_schema_path)
+    # Canvas.shapes should have Discriminator in list branch but not dict branch
+    assert "list[Annotated[" in code
+    assert "Discriminator(_discriminate_shapes)" in code
+    # dict branch should pass through without Discriminator/Tag wrapping
+    assert "dict[str, Circle | Box]" in code
+
+
+def test_discriminator_default_runtime(generate_code_from_schema, simple_schema_path):
+    """Discriminator default should resolve unknown kind values to the default type."""
+    code = generate_code_from_schema(simple_schema_path)
+    spec = importlib.util.spec_from_loader("canvas_models", loader=None)
+    mod = importlib.util.module_from_spec(spec)
+    exec(compile(code, "<canvas_models>", "exec"), mod.__dict__)
+    sys.modules["canvas_models"] = mod
+
+    # circle -> Circle
+    data = {"shapes": [{"kind": "circle", "radius": 5.0}]}
+    canvas = mod.Canvas.model_validate(data)
+    assert isinstance(canvas.shapes[0], mod.Circle)
+    assert canvas.shapes[0].radius == 5.0
+
+    # rectangle -> Box (multi-value map)
+    data2 = {"shapes": [{"kind": "rectangle", "width": 10.0}]}
+    canvas2 = mod.Canvas.model_validate(data2)
+    assert isinstance(canvas2.shapes[0], mod.Box)
+
+    # box -> Box
+    data3 = {"shapes": [{"kind": "box", "width": 3.0}]}
+    canvas3 = mod.Canvas.model_validate(data3)
+    assert isinstance(canvas3.shapes[0], mod.Box)
+
+    # Mixed list
+    data4 = {"shapes": [{"kind": "circle", "radius": 1.0}, {"kind": "rectangle", "width": 2.0}]}
+    canvas4 = mod.Canvas.model_validate(data4)
+    assert isinstance(canvas4.shapes[0], mod.Circle)
+    assert isinstance(canvas4.shapes[1], mod.Box)

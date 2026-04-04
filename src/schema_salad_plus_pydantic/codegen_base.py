@@ -73,6 +73,7 @@ class CodeGenBase(ABC):
         self._field_pydantic_alias: str | None = None
         self._field_pydantic_discriminator_field: str | None = None
         self._field_pydantic_discriminator_map: str | None = None
+        self._field_pydantic_discriminator_default: str | None = None
 
         # Track inherited fields per class
         self._current_class_inherited_from: dict[str, str] = {}
@@ -105,17 +106,20 @@ class CodeGenBase(ABC):
         pydantic_alias: str | None = None,
         discriminator_field: str | None = None,
         discriminator_map: str | None = None,
+        discriminator_default: str | None = None,
     ) -> None:
         self._field_pydantic_type = pydantic_type
         self._field_pydantic_alias = pydantic_alias
         self._field_pydantic_discriminator_field = discriminator_field
         self._field_pydantic_discriminator_map = discriminator_map
+        self._field_pydantic_discriminator_default = discriminator_default
 
     def _clear_field_annotations(self) -> None:
         self._field_pydantic_type = None
         self._field_pydantic_alias = None
         self._field_pydantic_discriminator_field = None
         self._field_pydantic_discriminator_map = None
+        self._field_pydantic_discriminator_default = None
 
     def mark_field_inherited(self, field_shortname: str, inherited_from: str) -> None:
         parent_safe = self.safe_name(inherited_from)
