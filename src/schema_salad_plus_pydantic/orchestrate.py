@@ -193,6 +193,7 @@ def _set_pydantic_annotations(gen: CodeGenBase, field: dict[str, Any]) -> None:
         pydantic_alias=_get_pydantic_key(field, "alias"),
         discriminator_field=_get_pydantic_key(field, "discriminator_field"),
         discriminator_map=_get_pydantic_key(field, "discriminator_map"),
+        discriminator_default=_get_pydantic_key(field, "discriminator_default"),
     )
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import re
+from collections import defaultdict
 from collections.abc import MutableSequence
 from io import StringIO
 from typing import IO, Final
@@ -238,7 +239,7 @@ class EffectSchemaCodeGen(CodeGenBase):
 
         if self._field_pydantic_discriminator_field and self._field_pydantic_discriminator_map:
             disc_map = ast.literal_eval(self._field_pydantic_discriminator_map)
-            union_parts = list(disc_map.values())
+            union_parts = list(dict.fromkeys(disc_map.values()))
             union_type = " | ".join(union_parts)
             self._discriminators.append((self._field_pydantic_discriminator_field, union_type, disc_map))
 
@@ -320,8 +321,13 @@ class EffectSchemaCodeGen(CodeGenBase):
             self.out.write(code)
 
         for disc_field, union_type, disc_map in self._discriminators:
+            # Group discriminator values by type name to dedup guards
+            type_to_values: dict[str, list[str]] = defaultdict(list)
             for disc_value, type_name in disc_map.items():
+                type_to_values[type_name].append(disc_value)
+            for type_name, disc_values in type_to_values.items():
                 func_name = f"is{type_name}"
+                conditions = " || ".join(f'v?.{disc_field} === "{dv}"' for dv in disc_values)
                 self.out.write(f"export function {func_name}(v: {union_type}): v is {type_name} {{\n")
-                self.out.write(f'  return v?.{disc_field} === "{disc_value}";\n')
+                self.out.write(f"  return {conditions};\n")
                 self.out.write("}\n\n")

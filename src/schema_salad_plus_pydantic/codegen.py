@@ -11,7 +11,7 @@ from typing import IO, Final
 from schema_salad.codegen_base import TypeDef
 from schema_salad.schema import shortname
 
-from .codegen_base import CodeGenBase
+from .codegen_base import CodeGenBase, split_top_level
 
 # Primitive type mappings — we map to Python/pydantic types, not loader classes
 _PRIM_PYTHON: Final[dict[str, str]] = {
@@ -167,20 +167,30 @@ from pydantic import BaseModel, ConfigDict, Field, Discriminator, Tag
             return " | ".join(tag_type(p) for p in parts)
 
         # Strip None from the union (may appear at beginning or end)
-        parts = [p.strip() for p in type_ann.split("|")]
-        non_none = [p for p in parts if p != "None"]
-        nullable = len(non_none) < len(parts)
-        core = " | ".join(non_none)
+        top_parts = split_top_level(type_ann, "|")
+        non_none = [p.strip() for p in top_parts if p.strip() != "None"]
+        nullable = len(non_none) < len(top_parts)
 
-        # Check for list wrapper
-        list_match = re.match(r"^list\[(.+)\]$", core)
-        if list_match:
-            inner_union = list_match.group(1)
-            tagged_inner = tag_union(inner_union)
-            result = f"list[Annotated[{tagged_inner}, Discriminator({disc_func})]]"
-        else:
+        # Split into branches at top level to handle complex unions like
+        # list[A | B] | dict[str, A | B | str]
+        branches = [b.strip() for b in non_none]
+        applied = False
+        for i, branch in enumerate(branches):
+            list_match = re.match(r"^list\[(.+)\]$", branch)
+            if list_match:
+                inner_union = list_match.group(1)
+                tagged_inner = tag_union(inner_union)
+                branches[i] = f"list[Annotated[{tagged_inner}, Discriminator({disc_func})]]"
+                applied = True
+                break
+
+        if not applied:
+            # No list branch — apply discriminator to the bare union
+            core = " | ".join(branches)
             tagged = tag_union(core)
             result = f"Annotated[{tagged}, Discriminator({disc_func})]"
+        else:
+            result = " | ".join(branches)
 
         if nullable:
             result = f"{result} | None"
@@ -278,8 +288,10 @@ from pydantic import BaseModel, ConfigDict, Field, Discriminator, Tag
         if disc_func and disc_field and disc_map_str:
             # Store for later emission (after all classes)
             if not hasattr(self, "_deferred_discriminators"):
-                self._deferred_discriminators: list[tuple[str, str, str, str]] = []
-            self._deferred_discriminators.append((disc_func, disc_field, disc_map_str, self._current_class))
+                self._deferred_discriminators: list[tuple[str, str, str, str, str | None]] = []
+            self._deferred_discriminators.append(
+                (disc_func, disc_field, disc_map_str, self._current_class, self._field_pydantic_discriminator_default)
+            )
 
         self._clear_field_annotations()
 
@@ -299,7 +311,7 @@ from pydantic import BaseModel, ConfigDict, Field, Discriminator, Tag
 
         # Emit discriminator functions before classes (they need to be defined before use)
         if hasattr(self, "_deferred_discriminators"):
-            for disc_func, disc_field, disc_map_str, classname in self._deferred_discriminators:
+            for disc_func, disc_field, disc_map_str, classname, disc_default in self._deferred_discriminators:
                 # For getattr on model instances, use Python-safe name (e.g. "class" -> "class_")
                 py_disc_field = self._python_name(disc_field)
                 self.out.write(f"\ndef {disc_func}(v: Any) -> str:\n")
@@ -308,7 +320,10 @@ from pydantic import BaseModel, ConfigDict, Field, Discriminator, Tag
                 self.out.write(f'        disc_val: str = str(v.get("{disc_field}", ""))\n')
                 self.out.write("    else:\n")
                 self.out.write(f'        disc_val = str(getattr(v, "{py_disc_field}", ""))\n')
-                self.out.write("    return disc_map.get(disc_val, disc_val)\n\n")
+                if disc_default:
+                    self.out.write(f'    return disc_map.get(disc_val, "{disc_default}")\n\n')
+                else:
+                    self.out.write("    return disc_map.get(disc_val, disc_val)\n\n")
 
         # Emit classes
         self.out.write(self._class_code.getvalue())

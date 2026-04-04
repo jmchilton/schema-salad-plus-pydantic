@@ -141,6 +141,20 @@ def test_array_type(generate_typescript_from_schema, simple_schema_path):
     assert "Array<string>" in code or "string[]" in code
 
 
+def test_multi_value_type_guard_dedup(generate_typescript_from_schema, simple_schema_path):
+    """Multi-value discriminator maps should produce one guard per type with OR conditions."""
+    code = generate_typescript_from_schema(simple_schema_path)
+    # Should have exactly one isBox guard, not two
+    assert code.count("function isBox") == 1
+    assert code.count("function isCircle") == 1
+    # isBox should check both values
+    assert 'v?.kind === "box" || v?.kind === "rectangle"' in code
+    # Union type should not repeat Box
+    assert "Circle | Box" in code
+    # Should not have "Circle | Box | Box"
+    assert "Box | Box" not in code
+
+
 def test_cli_format_typescript(simple_schema_path):
     """CLI --format=typescript should produce TypeScript output."""
     import sys
