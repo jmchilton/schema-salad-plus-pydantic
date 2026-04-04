@@ -103,7 +103,11 @@ def _wrap_forward_refs(code: str, forward_refs: set[str]) -> str:
     for ref in forward_refs:
         schema_name = f"{ref}Schema"
         pattern = rf"(?<!const )(?<!typeof )(?<!\.\.\.)(\b{re.escape(schema_name)}\b)(?!\.Type)(?!\.fields)"
-        code = re.sub(pattern, rf"Schema.suspend((): Schema.Schema<any> => {schema_name})", code)
+        code = re.sub(
+            pattern,
+            rf'Schema.suspend((): Schema.Schema<any> => {schema_name}).annotations({{ identifier: "{schema_name}" }})',
+            code,
+        )
     return code
 
 
