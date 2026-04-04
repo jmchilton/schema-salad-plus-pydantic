@@ -73,10 +73,12 @@ def _python_type_to_ts(py_type: str) -> str:
         inner = list_match.group(1)
         return f"Array<{_python_type_to_ts(inner)}>"
 
-    # Literal["value"] or Literal['value'] -> "value"
-    literal_match = re.match(r"""^Literal\[["'](.+)["']\]$""", py_type)
+    # Literal["v1", "v2", ...] -> "v1" | "v2" | ...
+    literal_match = re.match(r"^Literal\[(.+)\]$", py_type)
     if literal_match:
-        return f'"{literal_match.group(1)}"'
+        inner = literal_match.group(1)
+        values = [v.strip().strip("\"'") for v in split_top_level(inner, ",")]
+        return " | ".join(f'"{v}"' for v in values)
 
     # Primitive mapping
     if py_type in _PY_TO_TS_PRIMS:

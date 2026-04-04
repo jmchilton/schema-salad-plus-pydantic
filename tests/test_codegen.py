@@ -39,6 +39,16 @@ def test_single_symbol_enum_is_literal(generate_code_from_schema, simple_schema_
     assert 'Literal["Person"]' in code
 
 
+def test_multi_value_literal_default(generate_code_from_schema, simple_schema_path):
+    """Multi-value Literal fields should default to the first value only."""
+    code = generate_code_from_schema(simple_schema_path)
+    # MultiLiteralRecord.type has pydantic:type: 'Literal["integer", "int"]'
+    # Default should be just "integer", not "integer", "int"
+    assert 'Literal["integer", "int"]' in code
+    assert 'default="integer"' in code
+    assert 'default="integer", "int"' not in code
+
+
 def test_pydantic_type_override(generate_code_from_schema, simple_schema_path):
     """Fields with pydantic:type should use the override type annotation."""
     code = generate_code_from_schema(simple_schema_path)
