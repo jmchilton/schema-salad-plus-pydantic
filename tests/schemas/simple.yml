@@ -195,3 +195,15 @@ $graph:
       pydantic:discriminator_map: '{"circle": "Circle", "box": "Box", "rectangle": "Box"}'
       pydantic:discriminator_default: "Box"
       doc: Shapes on the canvas.
+
+- name: MultiLiteralRecord
+  type: record
+  doc: Record to test multi-value Literal default.
+  fields:
+    - name: type
+      type: string
+      jsonldPredicate:
+        "_id": "@type"
+        "_type": "@vocab"
+      pydantic:type: 'Literal["integer", "int"]'
+      doc: Multi-value literal type field.

@@ -244,8 +244,8 @@ from pydantic import BaseModel, ConfigDict, Field, Discriminator, Tag
         else:
             default = None
 
-        # Single-symbol Literal fields (discriminators) get a default value
-        literal_match = re.match(r'^Literal\["(.+)"\]$', type_ann)
+        # Literal fields (discriminators) get a default of the first value
+        literal_match = re.match(r'^Literal\["([^"]+)"', type_ann)
         if literal_match and default is None:
             default = f'"{literal_match.group(1)}"'
 
