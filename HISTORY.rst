@@ -6,8 +6,13 @@ History
 .. to_doc
 
 ---------------------
-0.1.7.dev0
+0.1.7 (2026-04-04)
 ---------------------
+
+* Add ``pydantic:discriminator_default`` annotation for fallback type resolution.
+* Handle complex ``pydantic:type`` unions (e.g. ``list[A|B] | dict[str, A|B]``) — discriminator applied only to list branch.
+* Dedup TypeScript/Effect Schema type guards for multi-value discriminator maps.
+* Add ``--version`` flag to CLI.
 
 
 ---------------------
