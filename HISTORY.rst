@@ -6,8 +6,10 @@ History
 .. to_doc
 
 ---------------------
-0.1.6.dev0
+0.1.6 (2026-04-04)
 ---------------------
+
+* Add identifier annotations to ``Schema.suspend()`` calls for ``JSONSchema.make()`` support.
 
 
 ---------------------
