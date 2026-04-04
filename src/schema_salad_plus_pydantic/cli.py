@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from . import __version__
 from .enhance_docs import enhance_docs
 from .orchestrate import generate_from_schema
 
@@ -14,6 +15,7 @@ def main(argv: list[str] | None = None) -> None:
         prog="schema-salad-plus-pydantic",
         description="Generate pydantic v2 models or TypeScript interfaces from schema-salad definitions",
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command")
 
     gen_parser = subparsers.add_parser("generate", help="Generate pydantic models")
