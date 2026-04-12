@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from collections.abc import MutableSequence
@@ -10,6 +11,22 @@ from typing import IO, Any, Final
 from schema_salad import schema
 from schema_salad.codegen_base import LazyInitDef, TypeDef
 from schema_salad.schema import shortname
+
+_LITERAL_RE = re.compile(r"Literal\[([^\]]+)\]")
+
+
+def _extract_literal_values_from_type(py_type: str) -> set[str] | None:
+    """Extract all string values from Literal[...] expressions in py_type."""
+    matches = _LITERAL_RE.findall(py_type)
+    if not matches:
+        return None
+    values: set[str] = set()
+    for m in matches:
+        for part in m.split(","):
+            v = part.strip().strip("\"'")
+            if v:
+                values.add(v)
+    return values or None
 
 
 def split_top_level(s: str, sep: str) -> list[str]:
@@ -78,6 +95,10 @@ class CodeGenBase(ABC):
         # Track inherited fields per class
         self._current_class_inherited_from: dict[str, str] = {}
 
+        # Track Literal values declared on discriminator fields per class
+        # {class_name: {field_shortname: set_of_literal_values}}
+        self._class_discriminator_literals: dict[str, dict[str, set[str]]] = {}
+
     # ── shared helpers ──
 
     def declare_type(self, declared_type: TypeDef) -> TypeDef:
@@ -124,6 +145,15 @@ class CodeGenBase(ABC):
     def mark_field_inherited(self, field_shortname: str, inherited_from: str) -> None:
         parent_safe = self.safe_name(inherited_from)
         self._current_class_inherited_from[field_shortname] = parent_safe
+
+    def _maybe_record_field_literals(self, field_shortname: str) -> None:
+        """If the current field has a pydantic:type with Literal values, record them."""
+        if not self._field_pydantic_type or not self._current_class:
+            return
+        values = _extract_literal_values_from_type(self._field_pydantic_type)
+        if values is None:
+            return
+        self._class_discriminator_literals.setdefault(self._current_class, {})[field_shortname] = values
 
     # ── no-op loader wrappers (pydantic/TS don't need these) ──
 

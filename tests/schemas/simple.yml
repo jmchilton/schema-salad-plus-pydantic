@@ -207,3 +207,47 @@ $graph:
         "_type": "@vocab"
       pydantic:type: 'Literal["integer", "int"]'
       doc: Multi-value literal type field.
+
+- name: ThingA
+  type: record
+  doc: A thing of type a.
+  fields:
+    - name: kind
+      type: string
+      jsonldPredicate:
+        "_id": "@type"
+        "_type": "@vocab"
+      pydantic:type: 'Literal["a"]'
+      doc: Thing discriminator.
+    - name: value
+      type: string
+      doc: Thing value.
+
+- name: ThingB
+  type: record
+  doc: A thing of type b.
+  fields:
+    - name: kind
+      type: string
+      jsonldPredicate:
+        "_id": "@type"
+        "_type": "@vocab"
+      pydantic:type: 'Literal["b"]'
+      doc: Thing discriminator.
+    - name: value
+      type: string
+      doc: Thing value.
+
+- name: SynonymContainer
+  type: record
+  doc: Container whose discriminator map includes synonyms not in subclass Literals.
+  fields:
+    - name: items
+      type: Any?
+      jsonldPredicate:
+        _id: "test:SynonymContainer/items"
+        noLinkCheck: true
+      pydantic:type: "list[ThingA | ThingB] | None"
+      pydantic:discriminator_field: "kind"
+      pydantic:discriminator_map: '{"a": "ThingA", "a_alias": "ThingA", "b": "ThingB"}'
+      doc: Things in the container.

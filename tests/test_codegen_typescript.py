@@ -155,6 +155,16 @@ def test_multi_value_type_guard_dedup(generate_typescript_from_schema, simple_sc
     assert "Box | Box" not in code
 
 
+def test_discriminator_synonym_filtered_from_type_guard(generate_typescript_from_schema, simple_schema_path):
+    """Synonyms in disc_map that are not valid Literal values should be omitted from type guards."""
+    code = generate_typescript_from_schema(simple_schema_path)
+    # isThingA should only check canonical "a", not the routing synonym "a_alias"
+    assert 'v?.kind === "a"' in code
+    assert 'v?.kind === "a_alias"' not in code
+    # isThingB should check "b"
+    assert 'v?.kind === "b"' in code
+
+
 def test_cli_format_typescript(simple_schema_path):
     """CLI --format=typescript should produce TypeScript output."""
     import sys

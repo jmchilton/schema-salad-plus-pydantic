@@ -243,6 +243,8 @@ class EffectSchemaCodeGen(CodeGenBase):
             union_type = " | ".join(union_parts)
             self._discriminators.append((self._field_pydantic_discriminator_field, union_type, disc_map))
 
+        self._maybe_record_field_literals(json_key)
+
         needs_quote = not prop_name.isidentifier() or "-" in prop_name
         prop_str = f'"{prop_name}"' if needs_quote else prop_name
 
@@ -326,6 +328,14 @@ class EffectSchemaCodeGen(CodeGenBase):
             for disc_value, type_name in disc_map.items():
                 type_to_values[type_name].append(disc_value)
             for type_name, disc_values in type_to_values.items():
+                # Filter to values that the validated class can actually hold.
+                # disc_map may include routing synonyms that aren't valid post-validation
+                # Literal values — including them causes TS2367 impossible comparisons.
+                canonical = self._class_discriminator_literals.get(type_name, {}).get(disc_field)
+                if canonical is not None:
+                    disc_values = [dv for dv in disc_values if dv in canonical]
+                if not disc_values:
+                    continue
                 func_name = f"is{type_name}"
                 conditions = " || ".join(f'v?.{disc_field} === "{dv}"' for dv in disc_values)
                 self.out.write(f"export function {func_name}(v: {union_type}): v is {type_name} {{\n")
