@@ -1,6 +1,6 @@
 """Generate pydantic v2 BaseModel classes from schema-salad definitions."""
 
-__version__ = "0.1.9"
+__version__ = "0.1.10.dev0"
 
 PROJECT_NAME = "schema-salad-plus-pydantic"
 PROJECT_AUTHOR = "jmchilton"
