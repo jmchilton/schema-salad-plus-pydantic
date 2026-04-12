@@ -6,9 +6,10 @@ History
 .. to_doc
 
 ---------------------
-0.1.9.dev0
+0.1.9 (2026-04-12)
 ---------------------
 
+* Fix TS2367: filter discriminator map synonyms from TypeScript type guard conditions.
 
 ---------------------
 0.1.8 (2026-04-04)
