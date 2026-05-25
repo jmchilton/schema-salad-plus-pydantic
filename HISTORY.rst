@@ -9,6 +9,10 @@ History
 0.1.10.dev0
 ---------------------
 
+* Strip leading underscores from schema field names when generating Python
+  attribute names; auto-alias preserves the on-disk JSON key. Avoids silent
+  drops on fields like ``_plan_state`` that pydantic v2 would otherwise treat
+  as ``PrivateAttr`` and exclude from validation.
 
 ---------------------
 0.1.9 (2026-04-12)

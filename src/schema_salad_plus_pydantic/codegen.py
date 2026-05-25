@@ -84,7 +84,15 @@ class PydanticCodeGen(CodeGenBase):
         sn = shortname(name)
         if sn in ("class", "in", "type"):
             return f"{sn}_"
-        return sn.replace("-", "_")
+        py = sn.replace("-", "_")
+        # Pydantic v2 treats leading-underscore attributes as PrivateAttr and
+        # excludes them from validation. Strip the prefix; the json_key/py_name
+        # mismatch then triggers the auto-alias below so the on-disk key is
+        # preserved.
+        stripped = py.lstrip("_")
+        if stripped and stripped != py:
+            py = stripped
+        return py
 
     def _json_key(self, name: str) -> str:
         """Get the JSON key for a field (the shortname before python-safeing)."""

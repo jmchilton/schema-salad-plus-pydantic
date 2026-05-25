@@ -44,12 +44,16 @@ class TestSimpleSchemaRoundtrip:
             "format-version": "1.0",
             "items": {"key1": "val1", "key2": "val2"},
             "tags": ["a", "b"],
+            "_draft_note": "planning text",
         }
         obj = mod.ChildRecord.model_validate(data)
         assert obj.name == "test-item"
         assert obj.format_version == "1.0"
         assert obj.items == {"key1": "val1", "key2": "val2"}
         assert obj.tags == ["a", "b"]
+        assert obj.draft_note == "planning text"
+        dumped = obj.model_dump(by_alias=True, exclude_none=True)
+        assert dumped["_draft_note"] == "planning text"
 
     def test_simple_model_optional_fields(self, generate_code_from_schema, simple_schema_path):
         code = generate_code_from_schema(simple_schema_path)

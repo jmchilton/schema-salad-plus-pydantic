@@ -65,6 +65,9 @@ $graph:
         - type: array
           items: string
       doc: List of tags.
+    - name: _draft_note
+      type: string?
+      doc: Field whose on-disk key starts with an underscore; Python attr is renamed.
     - name: members
       type:
         - "null"
