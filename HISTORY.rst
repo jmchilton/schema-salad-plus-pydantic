@@ -6,7 +6,7 @@ History
 .. to_doc
 
 ---------------------
-0.1.10.dev0
+0.1.10 (2026-05-25)
 ---------------------
 
 * Strip leading underscores from schema field names when generating Python
