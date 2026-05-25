@@ -61,6 +61,14 @@ def test_field_alias(generate_code_from_schema, simple_schema_path):
     assert 'alias="format-version"' in code
 
 
+def test_leading_underscore_field_renamed_with_alias(generate_code_from_schema, simple_schema_path):
+    """Leading-underscore schema fields are renamed (pydantic v2 PrivateAttr) and aliased."""
+    code = generate_code_from_schema(simple_schema_path)
+    assert "draft_note:" in code
+    assert "_draft_note:" not in code
+    assert 'alias="_draft_note"' in code
+
+
 def test_inherited_fields_not_redeclared(generate_code_from_schema, simple_schema_path):
     """Child classes should NOT redeclare fields inherited from parents."""
     code = generate_code_from_schema(simple_schema_path)
